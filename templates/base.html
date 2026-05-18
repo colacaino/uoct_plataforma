@@ -19,7 +19,7 @@
     <nav class="nav">
       <span class="nav-label">Operación</span>
       <a class="{% if request.resolver_match.url_name == 'dashboard' %}on{% endif %}" href="{% url 'cruces:dashboard' %}">Dashboard</a>
-      <a href="{% static 'legacy/Dashboard_Rutas_CFL2.html' %}" target="_blank" rel="noopener">Dashboard rutas HTML</a>
+      <a href="{% url 'cruces:legacy_routes_dashboard' %}" target="_blank" rel="noopener">Dashboard rutas HTML</a>
       <a class="{% if request.resolver_match.url_name == 'list' or request.resolver_match.url_name == 'detail' or request.resolver_match.url_name == 'create' or request.resolver_match.url_name == 'update' %}on{% endif %}" href="{% url 'cruces:list' %}">Cruces</a>
       <a class="{% if request.resolver_match.url_name == 'analysis_list' or request.resolver_match.url_name == 'analysis_detail' or request.resolver_match.url_name == 'analysis_create' %}on{% endif %}" href="{% url 'cruces:analysis_list' %}">Análisis</a>
       <span class="nav-label">Carga de datos</span>

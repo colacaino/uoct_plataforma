@@ -6,6 +6,7 @@ app_name = "cruces"
 
 urlpatterns = [
     path("", views.DashboardView.as_view(), name="dashboard"),
+    path("dashboard-rutas-html/", views.legacy_routes_dashboard_view, name="legacy_routes_dashboard"),
     path("cruces/", views.CruceListView.as_view(), name="list"),
     path("cruces/importar-bitacora/", views.bitacora_import_view, name="import_bitacora"),
     path("cruces/nuevo/", views.CruceCreateView.as_view(), name="create"),

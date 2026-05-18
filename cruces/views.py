@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -722,6 +723,14 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 config={"displayModeBar": False, "responsive": True},
             )
         return context
+
+
+@login_required
+def legacy_routes_dashboard_view(request):
+    path = settings.BASE_DIR / "static" / "legacy" / "Dashboard_Rutas_CFL2.html"
+    if not path.exists():
+        raise Http404("Dashboard de rutas no disponible.")
+    return FileResponse(path.open("rb"), content_type="text/html; charset=utf-8")
 
 
 class CruceListView(LoginRequiredMixin, ListView):
