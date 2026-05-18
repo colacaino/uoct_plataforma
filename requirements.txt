@@ -5,3 +5,4 @@ plotly==5.24.1
 reportlab==4.2.5
 psycopg[binary]==3.2.3
 gunicorn==23.0.0
+whitenoise==6.8.2
