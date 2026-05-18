@@ -1313,6 +1313,75 @@ td small {
   text-transform: uppercase;
 }
 
+.traffic-summary {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.2fr) minmax(300px, .8fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.traffic-summary-main,
+.traffic-kpi-grid article,
+.traffic-insight-grid article {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+}
+
+.traffic-summary-main {
+  padding: 18px;
+}
+
+.traffic-summary-main span,
+.traffic-insight-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.traffic-summary-main h2 {
+  margin: 6px 0 8px;
+  font-size: 22px;
+}
+
+.traffic-summary-main p {
+  margin: 0;
+  color: #334155;
+  line-height: 1.5;
+}
+
+.traffic-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.traffic-kpi-grid article,
+.traffic-insight-grid article {
+  padding: 14px;
+}
+
+.traffic-kpi-grid strong,
+.traffic-insight-grid strong {
+  display: block;
+  font-size: 24px;
+}
+
+.traffic-kpi-grid span,
+.traffic-insight-grid small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.traffic-insight-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 10px;
+}
+
 .share-form {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) 140px auto;
@@ -1484,6 +1553,9 @@ td small {
   .cruce-overview,
   .cruce-metric-grid,
   .latest-analysis-strip,
+  .traffic-summary,
+  .traffic-kpi-grid,
+  .traffic-insight-grid,
   .workflow-grid,
   .upload-grid {
     grid-template-columns: 1fr;

@@ -5,7 +5,7 @@
 {% block content %}
 <header class="page-header">
   <div>
-    <h1>Nuevo análisis big data</h1>
+    <h1>Nuevo analisis de rutas</h1>
     <p>Compara dos archivos de rutas, antes y después, para un cruce y horario específico.</p>
   </div>
   <a class="button secondary" href="{% url 'cruces:analysis_list' %}">Volver</a>
@@ -20,7 +20,7 @@
       {% if selected_cruce.fecha_terreno %} · {{ selected_cruce.fecha_terreno|date:"d/m/Y" }}{% endif %}
     </p>
     {% if selected_cruce.rutas_texto %}
-      <p class="muted">Se usarán las rutas importadas desde la bitácora cuando coincidan con los nombres del archivo big data.</p>
+      <p class="muted">Se usaran las rutas importadas desde la bitacora cuando coincidan con los nombres del archivo de rutas.</p>
     {% endif %}
   </section>
 {% endif %}
@@ -54,7 +54,7 @@
     <div class="wizard-heading">
       <span>2</span>
       <div>
-        <h2>Archivos big data</h2>
+        <h2>Archivos de rutas</h2>
         <p>Carga el archivo de referencia y el archivo posterior a la modificación.</p>
       </div>
     </div>

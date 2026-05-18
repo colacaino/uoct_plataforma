@@ -28,6 +28,39 @@ def _autosize_sheet(sheet):
         sheet.column_dimensions[column].width = min(max(max_length + 2, 12), 45)
 
 
+def _traffic_narrative(summary: dict[str, Any]) -> list[str]:
+    dashboard = summary.get("traffic_dashboard") or {}
+    kpis = dashboard.get("kpis") or {}
+    insights = dashboard.get("insights") or {}
+    if not kpis:
+        return []
+    peak = insights.get("peak_queue") or {}
+    minimum = insights.get("min_speed") or {}
+    paragraphs = [
+        (
+            "Se analizaron las velocidades y la cola estimada por intervalo horario, "
+            f"considerando {kpis.get('records', 0)} registros distribuidos en {kpis.get('routes', 0)} ruta(s). "
+            f"La velocidad promedio del periodo fue {kpis.get('avg_speed', 0)} km/h y la cola promedio "
+            f"estimada fue {kpis.get('avg_queue_km', 0)} km."
+        )
+    ]
+    if peak:
+        paragraphs.append(
+            f"El mayor punto de cola se observa en {peak.get('route')} durante {peak.get('period')} "
+            f"a las {peak.get('bucket')}, con {peak.get('queue_km')} km estimados."
+        )
+    if minimum:
+        paragraphs.append(
+            f"La menor velocidad registrada se observa en {minimum.get('route')} durante {minimum.get('period')} "
+            f"a las {minimum.get('bucket')}, con {minimum.get('speed')} km/h."
+        )
+    paragraphs.append(
+        "La cola se calcula usando la velocidad libre P90 de cada ruta como referencia operacional. "
+        "Esta lectura sirve para detectar saturacion horaria y no reemplaza la validacion en terreno."
+    )
+    return paragraphs
+
+
 def build_analysis_excel(analysis) -> bytes:
     summary = analysis.summary or {}
     rows = analysis.route_rows or []
@@ -204,6 +237,28 @@ def build_analysis_excel(analysis) -> bytes:
         methodology_sheet[f"B{row}"].alignment = Alignment(wrap_text=True, vertical="top")
     _autosize_sheet(methodology_sheet)
 
+    traffic = summary.get("traffic_dashboard") or {}
+    if traffic.get("points"):
+        traffic_sheet = workbook.create_sheet("Dashboard rutas")
+        traffic_sheet.append(["Ruta", "Periodo", "Fecha", "Hora", "Velocidad km/h", "Cola km", "Registros", "Largo km"])
+        for point in traffic.get("points", [])[:2000]:
+            traffic_sheet.append(
+                [
+                    point.get("route"),
+                    point.get("period"),
+                    point.get("date"),
+                    point.get("bucket"),
+                    point.get("speed"),
+                    point.get("queue_km"),
+                    point.get("samples"),
+                    point.get("length_km"),
+                ]
+            )
+        for cell in traffic_sheet[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="1D4ED8")
+        _autosize_sheet(traffic_sheet)
+
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
@@ -227,11 +282,41 @@ def build_analysis_pdf(analysis) -> bytes:
     )
     styles = getSampleStyleSheet()
     story = [
-        Paragraph(f"Reporte de análisis: {analysis.name}", styles["Title"]),
+        Paragraph(f"Reporte operacional: {analysis.name}", styles["Title"]),
         Paragraph(f"Cruce: {analysis.cruce.interseccion}", styles["Heading2"]),
         Paragraph(_value(summary.get("conclusion"), "Sin conclusión disponible."), styles["BodyText"]),
         Spacer(1, 0.35 * cm),
     ]
+
+    cruce = analysis.cruce
+    field_table = Table(
+        [
+            ["Eje / cruce evaluado", cruce.interseccion, "Codigo", cruce.codigo_j or "-"],
+            ["Comuna", cruce.comuna or "-", "Jornada", cruce.jornada or "-"],
+            [
+                "Fecha terreno",
+                cruce.fecha_terreno.strftime("%d/%m/%Y") if cruce.fecha_terreno else "-",
+                "Evaluador",
+                cruce.evaluador or "-",
+            ],
+            ["Solicita", cruce.solicita or "-", "Proyecto", cruce.project.name if cruce.project else "-"],
+        ],
+        colWidths=[4 * cm, 9 * cm, 3 * cm, 7 * cm],
+    )
+    field_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E8EEF8")),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("PADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.extend([Paragraph("Ficha operativa", styles["Heading2"]), field_table, Spacer(1, 0.35 * cm)])
 
     summary_table = Table(
         [
@@ -363,6 +448,42 @@ def build_analysis_pdf(analysis) -> bytes:
         )
     )
     story.extend([Paragraph("Calidad de datos", styles["Heading3"]), quality_table, Spacer(1, 0.35 * cm)])
+
+    traffic_paragraphs = _traffic_narrative(summary)
+    if traffic_paragraphs:
+        story.append(Paragraph("Analisis de los datos por horario", styles["Heading2"]))
+        for paragraph in traffic_paragraphs:
+            story.append(Paragraph(paragraph, styles["BodyText"]))
+        route_summary = (summary.get("traffic_dashboard") or {}).get("route_summary") or []
+        if route_summary:
+            route_summary_data = [["Ruta", "Vel. prom.", "Cola prom.", "Cola max.", "Vel. min.", "Registros"]]
+            for item in route_summary[:8]:
+                route_summary_data.append(
+                    [
+                        str(item.get("route", ""))[:58],
+                        f"{item.get('avg_speed', 0)} km/h",
+                        f"{item.get('avg_queue_km', 0)} km",
+                        f"{item.get('max_queue_km', 0)} km",
+                        f"{item.get('min_speed', 0)} km/h",
+                        item.get("samples", 0),
+                    ]
+                )
+            route_summary_table = Table(route_summary_data, repeatRows=1)
+            route_summary_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F766E")),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 7),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("PADDING", (0, 0), (-1, -1), 4),
+                    ]
+                )
+            )
+            story.extend([Spacer(1, 0.15 * cm), route_summary_table])
+        story.append(Spacer(1, 0.35 * cm))
 
     if executive.get("critical_routes"):
         critical_table_data = [["Ruta critica", "Delta vel.", "Delta tiempo", "Muestras", "Confianza"]]

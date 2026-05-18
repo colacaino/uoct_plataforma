@@ -102,6 +102,27 @@ def timestamp_to_minutes(value: Any) -> float:
     return math.nan
 
 
+def parse_timestamp(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except TypeError:
+        pass
+    if isinstance(value, pd.Timestamp):
+        return value.to_pydatetime()
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, time):
+        return datetime.combine(datetime.today().date(), value)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        parsed = pd.to_datetime(value, unit="D", origin="1899-12-30", errors="coerce")
+        return None if pd.isna(parsed) else parsed.to_pydatetime()
+    parsed = pd.to_datetime(str(value).strip(), errors="coerce", dayfirst=True)
+    return None if pd.isna(parsed) else parsed.to_pydatetime()
+
+
 def in_window(minutes: float, start_minute: int, end_minute: int) -> bool:
     if math.isnan(minutes):
         return False
@@ -133,6 +154,34 @@ def round_float(value: Any, digits: int = 2) -> float:
     if isinstance(value, float) and math.isnan(value):
         return 0.0
     return round(float(value), digits)
+
+
+def floor_bucket(value: time, interval_minutes: int) -> str:
+    interval = max(1, int(interval_minutes or 15))
+    minutes = value.hour * 60 + value.minute
+    snapped = (minutes // interval) * interval
+    hour = (snapped // 60) % 24
+    minute = snapped % 60
+    return f"{hour:02d}:{minute:02d}"
+
+
+def generate_time_slots(start: time, end: time, interval_minutes: int) -> list[str]:
+    interval = max(1, int(interval_minutes or 15))
+    start_minute = time_to_minutes(start)
+    end_minute = time_to_minutes(end)
+    slots = []
+    cursor = (start_minute // interval) * interval
+    end_floor = (end_minute // interval) * interval
+    guard = 0
+    while True:
+        slots.append(f"{(cursor // 60) % 24:02d}:{cursor % 60:02d}")
+        if cursor == end_floor:
+            break
+        cursor = (cursor + interval) % 1440
+        guard += 1
+        if guard > 1440 // interval + 2:
+            break
+    return slots
 
 
 def prepare_route_file(
@@ -230,6 +279,140 @@ def prepare_route_file(
         "routes": int(len(route_data)),
     }
     return PreparedRouteData(data=route_data, stats=stats, columns=columns)
+
+
+def _route_work_frame(path: str | Path, start: time, end: time, min_length_m: float = 0.0) -> tuple[pd.DataFrame, dict[str, str]]:
+    df = pd.read_excel(path)
+    if df.empty:
+        raise ValueError("El archivo esta vacio.")
+    columns = detect_route_columns([str(column) for column in df.columns])
+    start_minute = time_to_minutes(start)
+    end_minute = time_to_minutes(end)
+    work = pd.DataFrame(
+        {
+            "route": df[columns["route"]].astype(str).str.strip(),
+            "length": pd.to_numeric(df[columns["length"]], errors="coerce"),
+            "travel_time": pd.to_numeric(df[columns["time"]], errors="coerce"),
+            "timestamp": df[columns["timestamp"]].map(parse_timestamp),
+        }
+    )
+    work["minute"] = work["timestamp"].map(lambda value: math.nan if value is None else value.hour * 60 + value.minute)
+    valid_timestamp = work["minute"].apply(lambda value: not math.isnan(value))
+    in_range = work["minute"].apply(lambda value: in_window(value, start_minute, end_minute))
+    valid_values = (
+        work["route"].ne("")
+        & work["length"].notna()
+        & work["travel_time"].notna()
+        & (work["length"] > 0)
+        & (work["travel_time"] > 0)
+    )
+    if min_length_m:
+        valid_values = valid_values & (work["length"] >= min_length_m)
+    filtered = work[valid_timestamp & in_range & valid_values].copy()
+    filtered["speed"] = (filtered["length"] / filtered["travel_time"]) * 3.6
+    return filtered, columns
+
+
+def build_traffic_dashboard_data(
+    before_path: str | Path,
+    after_path: str | Path,
+    start: time,
+    end: time,
+    route_names: list[str],
+    min_length_m: float = 0.0,
+    interval_minutes: int = 15,
+) -> dict[str, Any]:
+    selected_routes = [route for route in route_names if route]
+    if not selected_routes:
+        return {}
+
+    frames = []
+    for label, path in (("Antes", before_path), ("Despues", after_path)):
+        frame, _columns = _route_work_frame(path, start, end, min_length_m)
+        frame = frame[frame["route"].isin(selected_routes)].copy()
+        if frame.empty:
+            continue
+        frame["period"] = label
+        frame["date"] = frame["timestamp"].map(lambda value: value.strftime("%Y-%m-%d") if value else label)
+        frames.append(frame)
+    if not frames:
+        return {}
+
+    work = pd.concat(frames, ignore_index=True)
+    free_flow = work.groupby("route")["speed"].quantile(0.9).to_dict()
+    work["free_flow_speed"] = work["route"].map(free_flow).fillna(work["speed"])
+    work["queue_km"] = (
+        ((work["free_flow_speed"] - work["speed"]).clip(lower=0) / work["free_flow_speed"].replace(0, math.nan))
+        * work["length"]
+        / 1000
+    ).fillna(0)
+    work["bucket"] = work["timestamp"].map(lambda value: floor_bucket(value.time(), interval_minutes) if value else "")
+
+    grouped = (
+        work.groupby(["route", "period", "date", "bucket"], dropna=False)
+        .agg(
+            speed=("speed", "mean"),
+            queue_km=("queue_km", "mean"),
+            samples=("speed", "size"),
+            length_km=("length", lambda values: values.mean() / 1000),
+        )
+        .reset_index()
+    )
+    grouped = grouped.sort_values(["route", "period", "date", "bucket"])
+    points = [
+        {
+            "route": row.route,
+            "period": row.period,
+            "date": row.date,
+            "bucket": row.bucket,
+            "speed": round_float(row.speed, 1),
+            "queue_km": round_float(row.queue_km, 2),
+            "samples": int(row.samples),
+            "length_km": round_float(row.length_km, 3),
+        }
+        for row in grouped.itertuples()
+    ]
+    route_summary = []
+    for route, group in grouped.groupby("route"):
+        route_summary.append(
+            {
+                "route": route,
+                "avg_speed": round_float(group["speed"].mean(), 1),
+                "avg_queue_km": round_float(group["queue_km"].mean(), 2),
+                "max_queue_km": round_float(group["queue_km"].max(), 2),
+                "min_speed": round_float(group["speed"].min(), 1),
+                "samples": int(group["samples"].sum()),
+            }
+        )
+    route_summary.sort(key=lambda item: (item["avg_queue_km"], -item["avg_speed"]), reverse=True)
+
+    peak_queue = max(points, key=lambda item: item["queue_km"], default=None)
+    min_speed = min(points, key=lambda item: item["speed"], default=None)
+    return {
+        "interval_minutes": interval_minutes,
+        "start": start.strftime("%H:%M"),
+        "end": end.strftime("%H:%M"),
+        "routes": selected_routes,
+        "periods": sorted(work["period"].dropna().unique().tolist()),
+        "dates": sorted(work["date"].dropna().unique().tolist()),
+        "slots": generate_time_slots(start, end, interval_minutes),
+        "points": points,
+        "route_summary": route_summary[:20],
+        "kpis": {
+            "routes": len(selected_routes),
+            "points": len(points),
+            "avg_speed": round_float(grouped["speed"].mean(), 1),
+            "avg_queue_km": round_float(grouped["queue_km"].mean(), 2),
+            "max_queue_km": round_float(grouped["queue_km"].max(), 2),
+            "records": int(grouped["samples"].sum()),
+        },
+        "insights": {
+            "peak_queue": peak_queue,
+            "min_speed": min_speed,
+            "free_flow_percentile": 90,
+            "queue_formula": "cola_km = max(0, (velocidad_libre_p90 - velocidad) / velocidad_libre_p90) * largo_km",
+        },
+    }
 
 
 def match_selected_routes(common_routes: list[str], route_hints_text: str) -> tuple[list[str], list[str]]:
@@ -495,7 +678,7 @@ def build_executive_analysis(summary: dict[str, Any] | None, route_rows: list[di
         if degraded_count:
             recommendations.append("Contrastar rutas con deterioro contra cambios de programacion semaforica y condiciones de terreno.")
         if coverage_alerts:
-            recommendations.append("Validar cobertura Big Data en rutas con caida de muestras antes de tomar decisiones.")
+            recommendations.append("Validar cobertura de datos en rutas con caida de muestras antes de tomar decisiones.")
         if quality["level"] in {"baja", "media"}:
             recommendations.append("Revisar filtros de horario y formato de datos para mejorar la calidad procesada.")
         if improved_count and not degraded_count:
@@ -736,6 +919,15 @@ def compare_route_files(
         "time_unit": "segundos",
         "speed_unit": "km/h",
     }
+    traffic_dashboard = build_traffic_dashboard_data(
+        before_path,
+        after_path,
+        start,
+        end,
+        [row["route"] for row in route_rows],
+        min_length_m=min_length_m,
+        interval_minutes=15,
+    )
 
     summary = {
         "result": result,
@@ -778,6 +970,7 @@ def compare_route_files(
             "invalid_value_rows": "Filas dentro del horario, pero sin ruta, largo o tiempo usable.",
             "short_length_rows": "Filas descartadas por estar bajo el largo minimo configurado.",
         },
+        "traffic_dashboard": traffic_dashboard,
     }
     summary["conclusion"] = build_conclusion(summary)
     summary["executive_analysis"] = build_executive_analysis(summary, route_rows)

@@ -40,11 +40,13 @@
 
     {% include "cruces/partials/analysis_explainability.html" %}
 
+    {% include "cruces/partials/traffic_dashboard_summary.html" %}
+
     {% if analysis_charts %}
       <section class="chart-area">
         <div class="section-title">
-          <h2>Panorama gr&aacute;fico</h2>
-          <span>{{ analysis_charts|length }} vistas disponibles</span>
+          <h2>Dashboard interactivo de rutas</h2>
+          <span>{{ analysis_charts|length }} vista(s) disponibles</span>
         </div>
         <div class="chart-grid analysis-chart-grid">
           {% for chart in analysis_charts %}

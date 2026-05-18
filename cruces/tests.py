@@ -138,6 +138,8 @@ class RouteAnalysisEngineTests(TestCase):
         self.assertEqual(result["summary"]["parameters"]["threshold_pct"], 5.0)
         self.assertEqual(result["summary"]["parameters"]["percentile_low"], 15.0)
         self.assertIn("methodology", result["summary"])
+        self.assertIn("traffic_dashboard", result["summary"])
+        self.assertGreater(result["summary"]["traffic_dashboard"]["kpis"]["records"], 0)
         self.assertEqual(result["route_rows"][0]["route"], "Ruta A")
         self.assertEqual(result["route_rows"][0]["speed_delta_pct"], 100.0)
         self.assertIn("analysis_text", result["route_rows"][0])

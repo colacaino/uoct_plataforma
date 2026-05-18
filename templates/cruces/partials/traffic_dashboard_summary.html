@@ -1,0 +1,39 @@
+{% if traffic_dashboard.kpis %}
+  <section class="traffic-summary">
+    <article class="traffic-summary-main">
+      <span>Dashboard de rutas</span>
+      <h2>Velocidad, cola estimada y comportamiento horario</h2>
+      <p>
+        La cola se estima con la velocidad libre P{{ traffic_dashboard.insights.free_flow_percentile|default:"90" }} de cada ruta.
+        Esto permite leer congestion por intervalo, no solo el promedio final del analisis.
+      </p>
+    </article>
+    <div class="traffic-kpi-grid">
+      <article><strong>{{ traffic_dashboard.kpis.routes }}</strong><span>Rutas</span></article>
+      <article><strong>{{ traffic_dashboard.kpis.avg_speed }}</strong><span>Vel. prom. km/h</span></article>
+      <article><strong>{{ traffic_dashboard.kpis.avg_queue_km }}</strong><span>Cola prom. km</span></article>
+      <article><strong>{{ traffic_dashboard.kpis.records }}</strong><span>Registros usados</span></article>
+    </div>
+    <div class="traffic-insight-grid">
+      {% if traffic_dashboard.insights.peak_queue %}
+        <article>
+          <span>Mayor cola</span>
+          <strong>{{ traffic_dashboard.insights.peak_queue.queue_km }} km</strong>
+          <small>{{ traffic_dashboard.insights.peak_queue.route }} | {{ traffic_dashboard.insights.peak_queue.period }} | {{ traffic_dashboard.insights.peak_queue.bucket }}</small>
+        </article>
+      {% endif %}
+      {% if traffic_dashboard.insights.min_speed %}
+        <article>
+          <span>Menor velocidad</span>
+          <strong>{{ traffic_dashboard.insights.min_speed.speed }} km/h</strong>
+          <small>{{ traffic_dashboard.insights.min_speed.route }} | {{ traffic_dashboard.insights.min_speed.period }} | {{ traffic_dashboard.insights.min_speed.bucket }}</small>
+        </article>
+      {% endif %}
+      <article>
+        <span>Formula cola</span>
+        <strong>P90 libre</strong>
+        <small>{{ traffic_dashboard.insights.queue_formula }}</small>
+      </article>
+    </div>
+  </section>
+{% endif %}

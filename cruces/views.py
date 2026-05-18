@@ -349,6 +349,161 @@ def build_analysis_chart_items(rows, include_plotlyjs=True):
     return charts
 
 
+def build_traffic_dashboard_chart_items(dashboard, include_plotlyjs=True):
+    dashboard = dashboard or {}
+    points = dashboard.get("points") or []
+    slots = dashboard.get("slots") or []
+    if not points or not slots:
+        return []
+
+    charts = []
+    include_next_js = include_plotlyjs
+
+    def append_chart(slug, title, description, fig):
+        nonlocal include_next_js
+        charts.append(
+            {
+                "slug": slug,
+                "title": title,
+                "description": description,
+                "html": _plot_div(fig, include_next_js),
+            }
+        )
+        include_next_js = False
+
+    route_order = [item.get("route") for item in dashboard.get("route_summary", []) if item.get("route")]
+    if not route_order:
+        route_order = sorted({point["route"] for point in points})
+    route_order = route_order[:24]
+    periods = dashboard.get("periods") or sorted({point["period"] for point in points})
+
+    def average_by(filter_func, metric):
+        values = {}
+        for point in points:
+            if not filter_func(point):
+                continue
+            key = point["bucket"]
+            bucket = values.setdefault(key, {"sum": 0.0, "n": 0})
+            bucket["sum"] += _safe_float(point.get(metric))
+            bucket["n"] += 1
+        return [round(values[slot]["sum"] / values[slot]["n"], 2) if slot in values and values[slot]["n"] else None for slot in slots]
+
+    heat_rows = []
+    heat_z = []
+    heat_text = []
+    for route in route_order:
+        for period in periods:
+            row_values = average_by(lambda point, route=route, period=period: point["route"] == route and point["period"] == period, "speed")
+            if any(value is not None for value in row_values):
+                heat_rows.append(f"{route[:54]} | {period}")
+                heat_z.append(row_values)
+                heat_text.append(["" if value is None else f"{value:.1f}" for value in row_values])
+
+    if heat_rows:
+        fig_heat = go.Figure(
+            data=[
+                go.Heatmap(
+                    z=heat_z,
+                    x=slots,
+                    y=heat_rows,
+                    text=heat_text,
+                    colorscale=[
+                        [0, "#4c1d95"],
+                        [0.25, "#991b1b"],
+                        [0.45, "#c2410c"],
+                        [0.65, "#ca8a04"],
+                        [1, "#15803d"],
+                    ],
+                    zmin=0,
+                    zmax=35,
+                    texttemplate="%{text}",
+                    textfont={"size": 10},
+                    colorbar={"title": "km/h"},
+                    hovertemplate="%{y}<br>%{x}<br>Velocidad: %{z:.1f} km/h<extra></extra>",
+                    xgap=1,
+                    ygap=1,
+                )
+            ]
+        )
+        fig_heat.update_layout(
+            height=max(440, min(900, 130 + len(heat_rows) * 28)),
+            margin={"l": 250, "r": 30, "t": 20, "b": 75},
+            xaxis={"tickangle": -35, "showgrid": False},
+            yaxis={"autorange": "reversed", "showgrid": False, "tickfont": {"size": 10}},
+            template="plotly_white",
+        )
+        append_chart(
+            "traffic_heatmap",
+            "Mapa de calor velocidad / hora",
+            "Replica la lectura del dashboard HTML: filas por ruta y periodo, columnas por intervalo horario.",
+            fig_heat,
+        )
+
+    combos = [(route, period) for route in route_order for period in periods]
+    visible_combos = [
+        combo
+        for combo in combos
+        if any(point["route"] == combo[0] and point["period"] == combo[1] for point in points)
+    ]
+    collapse = len(visible_combos) > 12
+    colors = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#be185d", "#ea580c"]
+
+    def add_profile_chart(metric, title, y_title, slug, description):
+        fig = go.Figure()
+        if collapse:
+            for index, period in enumerate(periods):
+                values = average_by(lambda point, period=period: point["period"] == period, metric)
+                fig.add_trace(
+                    go.Scatter(
+                        x=slots,
+                        y=values,
+                        mode="lines+markers",
+                        name=period,
+                        line={"color": colors[index % len(colors)], "width": 3},
+                        connectgaps=True,
+                    )
+                )
+        else:
+            for index, (route, period) in enumerate(visible_combos):
+                values = average_by(lambda point, route=route, period=period: point["route"] == route and point["period"] == period, metric)
+                fig.add_trace(
+                    go.Scatter(
+                        x=slots,
+                        y=values,
+                        mode="lines+markers",
+                        name=f"{period} | {_short_label(route, 30)}",
+                        line={"color": colors[index % len(colors)], "width": 2.4},
+                        connectgaps=True,
+                    )
+                )
+        fig.update_layout(
+            height=390,
+            margin={"l": 55, "r": 20, "t": 20, "b": 65},
+            xaxis_title="Hora",
+            yaxis_title=y_title,
+            legend={"orientation": "h", "y": -0.25},
+            template="plotly_white",
+            hovermode="x unified",
+        )
+        append_chart(slug, title, description, fig)
+
+    add_profile_chart(
+        "speed",
+        "Perfil de velocidad",
+        "km/h",
+        "traffic_speed_profile",
+        "Lineas por ruta/periodo; si hay muchas rutas, se consolida por periodo para facilitar lectura.",
+    )
+    add_profile_chart(
+        "queue_km",
+        "Perfil de cola estimada",
+        "km",
+        "traffic_queue_profile",
+        "Cola estimada con velocidad libre P90 del tramo, siguiendo la logica del dashboard HTML.",
+    )
+    return charts
+
+
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = "cruces/dashboard.html"
 
@@ -840,8 +995,11 @@ class AnalysisDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         rows = list(self.object.route_rows or [])
-        context["executive_analysis"] = build_executive_analysis(self.object.summary or {}, rows)
-        context["analysis_charts"] = build_analysis_chart_items(rows, include_plotlyjs=True)
+        summary = self.object.summary or {}
+        context["executive_analysis"] = build_executive_analysis(summary, rows)
+        traffic_charts = build_traffic_dashboard_chart_items(summary.get("traffic_dashboard"), include_plotlyjs=True)
+        context["traffic_dashboard"] = summary.get("traffic_dashboard") or {}
+        context["analysis_charts"] = traffic_charts or build_analysis_chart_items(rows, include_plotlyjs=True)
         chart_rows = []
         if chart_rows:
             labels = [row["route"][:48] for row in chart_rows]
@@ -1014,14 +1172,18 @@ def shared_report_view(request, token):
     )
     if not share.is_available:
         raise Http404("Este reporte compartido no está disponible.")
+    summary = share.analysis.summary or {}
+    rows = share.analysis.route_rows or []
+    traffic_charts = build_traffic_dashboard_chart_items(summary.get("traffic_dashboard"), include_plotlyjs=True)
     return render(
         request,
         "cruces/shared_report.html",
         {
             "share": share,
             "analysis": share.analysis,
-            "executive_analysis": build_executive_analysis(share.analysis.summary or {}, share.analysis.route_rows or []),
-            "analysis_charts": build_analysis_chart_items(share.analysis.route_rows or [], include_plotlyjs=True),
+            "executive_analysis": build_executive_analysis(summary, rows),
+            "traffic_dashboard": summary.get("traffic_dashboard") or {},
+            "analysis_charts": traffic_charts or build_analysis_chart_items(rows, include_plotlyjs=True),
         },
     )
 
