@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Cruces | UOCT{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Mis cruces</h1>
+    <p>Registro central de cruces. Desde aquí se crean, editan y revisan las fichas técnicas.</p>
+  </div>
+  <div class="button-row">
+    <a class="button secondary" href="{% url 'cruces:import_bitacora' %}">Importar bitácora</a>
+    <a class="button primary" href="{% url 'cruces:create' %}">Nuevo cruce</a>
+  </div>
+</header>
+
+<form class="filters" method="get">
+  <input type="search" name="q" value="{{ q }}" placeholder="Buscar por cruce, código, comuna o proyecto">
+  <select name="estado">
+    <option value="">Todos los estados</option>
+    {% for value,label in estado_choices %}
+      <option value="{{ value }}" {% if estado == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <select name="jornada">
+    <option value="">Todas las jornadas</option>
+    {% for value,label in jornada_choices %}
+      <option value="{{ value }}" {% if jornada == value %}selected{% endif %}>{{ value }} - {{ label }}</option>
+    {% endfor %}
+  </select>
+  <button class="button secondary" type="submit">Filtrar</button>
+</form>
+
+{% if cruces %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Intersección</th>
+          <th>Fecha</th>
+          <th>Jornada</th>
+          <th>Evaluador</th>
+          <th>Estado</th>
+          <th>Análisis</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cruce in cruces %}
+          <tr>
+            <td>{{ cruce.codigo_j|default:"-" }}</td>
+            <td>
+              <a href="{{ cruce.get_absolute_url }}">{{ cruce.interseccion }}</a>
+              <small>{{ cruce.project.name|default:"Sin proyecto" }}</small>
+            </td>
+            <td>{{ cruce.fecha_terreno|date:"d/m/Y"|default:"-" }}</td>
+            <td>{{ cruce.jornada|default:"-" }}</td>
+            <td>{{ cruce.evaluador|default:"-" }}</td>
+            <td>{{ cruce.estado|default:"-" }}</td>
+            <td>{{ cruce.total_analisis }}</td>
+            <td class="actions">
+              <a href="{% url 'cruces:update' cruce.pk %}">Editar</a>
+              <a href="{% url 'cruces:delete' cruce.pk %}">Eliminar</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="empty-state">
+    <h2>No hay cruces para mostrar</h2>
+    <p>Ajusta los filtros o crea un nuevo cruce.</p>
+    <a class="button primary" href="{% url 'cruces:create' %}">Crear cruce</a>
+  </div>
+{% endif %}
+{% endblock %}

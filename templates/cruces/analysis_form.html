@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Nuevo análisis | UOCT{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Nuevo análisis big data</h1>
+    <p>Compara dos archivos de rutas, antes y después, para un cruce y horario específico.</p>
+  </div>
+  <a class="button secondary" href="{% url 'cruces:analysis_list' %}">Volver</a>
+</header>
+
+{% if selected_cruce %}
+  <section class="panel">
+    <h2>Cruce seleccionado</h2>
+    <p>
+      <strong>{{ selected_cruce.interseccion }}</strong>
+      {% if selected_cruce.codigo_j %} · {{ selected_cruce.codigo_j }}{% endif %}
+      {% if selected_cruce.fecha_terreno %} · {{ selected_cruce.fecha_terreno|date:"d/m/Y" }}{% endif %}
+    </p>
+    {% if selected_cruce.rutas_texto %}
+      <p class="muted">Se usarán las rutas importadas desde la bitácora cuando coincidan con los nombres del archivo big data.</p>
+    {% endif %}
+  </section>
+{% endif %}
+
+<form method="post" enctype="multipart/form-data" class="analysis-wizard">
+  {% csrf_token %}
+
+  <section class="panel wizard-section">
+    <div class="wizard-heading">
+      <span>1</span>
+      <div>
+        <h2>Contexto del análisis</h2>
+        <p>Selecciona el cruce, nombre del informe y ventana horaria.</p>
+      </div>
+    </div>
+    <div class="form-grid">
+      {% for field in form %}
+        {% if field.name == 'cruce' or field.name == 'name' or field.name == 'horario_inicio' or field.name == 'horario_fin' or field.name == 'threshold_pct' %}
+          <div class="field">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+            {% for error in field.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel wizard-section">
+    <div class="wizard-heading">
+      <span>2</span>
+      <div>
+        <h2>Archivos big data</h2>
+        <p>Carga el archivo de referencia y el archivo posterior a la modificación.</p>
+      </div>
+    </div>
+    <div class="upload-grid">
+      <div class="upload-card">
+        <strong>Antes</strong>
+        <p>Día base o referencia.</p>
+        {{ form.file_before }}
+        {% for error in form.file_before.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+      </div>
+      <div class="upload-card">
+        <strong>Después</strong>
+        <p>Día con modificación aplicada.</p>
+        {{ form.file_after }}
+        {% for error in form.file_after.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="panel wizard-section">
+    <div class="wizard-heading">
+      <span>3</span>
+      <div>
+        <h2>Rutas del cruce</h2>
+        <p>Opcional. Permite limitar el análisis a rutas asociadas al cruce.</p>
+      </div>
+    </div>
+    <div class="field">
+      <label for="{{ form.route_hints.id_for_label }}">{{ form.route_hints.label }}</label>
+      {{ form.route_hints }}
+      {% if form.route_hints.help_text %}<small>{{ form.route_hints.help_text }}</small>{% endif %}
+      {% for error in form.route_hints.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+    </div>
+  </section>
+
+  <div class="sticky-actions">
+    <div>
+      <strong>Listo para procesar</strong>
+      <small>El cálculo puede tardar algunos segundos con archivos grandes.</small>
+    </div>
+    <div class="form-actions">
+      <a class="button secondary" href="{% url 'cruces:analysis_list' %}">Cancelar</a>
+      <button class="button primary" type="submit">Procesar y guardar</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

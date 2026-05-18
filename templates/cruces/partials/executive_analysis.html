@@ -1,0 +1,80 @@
+{% if executive_analysis %}
+  <section class="executive-section">
+    <div class="executive-banner executive-risk-{{ executive_analysis.risk.level }}">
+      <div>
+        <span>Resumen ejecutivo</span>
+        <h2>{{ executive_analysis.headline }}</h2>
+        <p>{{ executive_analysis.narrative }}</p>
+      </div>
+      <aside class="executive-score">
+        <small>Nivel de riesgo</small>
+        <strong>{{ executive_analysis.risk.label }}</strong>
+        <span>{{ executive_analysis.risk.reason }}</span>
+      </aside>
+    </div>
+
+    <div class="executive-grid">
+      <article class="panel executive-panel">
+        <h3>Lecturas clave</h3>
+        <ul class="insight-list">
+          {% for item in executive_analysis.readouts %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </article>
+
+      <article class="panel executive-panel">
+        <h3>Recomendaciones</h3>
+        <ol class="recommendation-list">
+          {% for item in executive_analysis.recommendations %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ol>
+      </article>
+    </div>
+
+    <div class="route-focus-grid">
+      <article class="panel executive-panel">
+        <h3>Rutas cr&iacute;ticas</h3>
+        <ul class="route-focus-list">
+          {% for row in executive_analysis.critical_routes %}
+            <li>
+              <strong>{{ row.route }}</strong>
+              <small>Vel. {{ row.speed_delta_pct }}% &middot; Tiempo {{ row.time_delta_pct }}% &middot; Conf. {{ row.confidence_label }}</small>
+            </li>
+          {% empty %}
+            <li class="muted-row">Sin rutas cr&iacute;ticas detectadas.</li>
+          {% endfor %}
+        </ul>
+      </article>
+
+      <article class="panel executive-panel">
+        <h3>Mejores mejoras</h3>
+        <ul class="route-focus-list">
+          {% for row in executive_analysis.top_improvements %}
+            <li>
+              <strong>{{ row.route }}</strong>
+              <small>Vel. {{ row.speed_delta_pct }}% &middot; Tiempo {{ row.time_delta_pct }}% &middot; Obs. {{ row.samples_before }}/{{ row.samples_after }}</small>
+            </li>
+          {% empty %}
+            <li class="muted-row">Sin mejoras destacadas.</li>
+          {% endfor %}
+        </ul>
+      </article>
+
+      <article class="panel executive-panel">
+        <h3>Alertas de cobertura</h3>
+        <ul class="route-focus-list">
+          {% for row in executive_analysis.coverage_alerts %}
+            <li>
+              <strong>{{ row.route }}</strong>
+              <small>Muestras {{ row.samples_before }}/{{ row.samples_after }} &middot; {{ row.sample_delta_pct }}%</small>
+            </li>
+          {% empty %}
+            <li class="muted-row">Sin alertas relevantes de cobertura.</li>
+          {% endfor %}
+        </ul>
+      </article>
+    </div>
+  </section>
+{% endif %}

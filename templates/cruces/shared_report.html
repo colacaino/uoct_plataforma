@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ share.title }} | UOCT</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="public-report-body">
+  <main class="public-report">
+    <header class="page-header">
+      <div>
+        <h1>{{ share.title }}</h1>
+        <p>
+          {{ analysis.cruce.interseccion }}
+          {% if analysis.cruce.codigo_j %} · {{ analysis.cruce.codigo_j }}{% endif %}
+          · {{ analysis.horario_inicio|time:"H:i" }} - {{ analysis.horario_fin|time:"H:i" }}
+        </p>
+      </div>
+      <span class="status-pill status-{{ analysis.result }}">{{ analysis.get_result_display }}</span>
+    </header>
+
+    <section class="hero-result result-{{ analysis.result }}">
+      <div>
+        <span>{{ analysis.get_result_display }}</span>
+        <strong>{{ analysis.summary.speed_delta_pct|default:"0" }}%</strong>
+        <small>Variación promedio de velocidad</small>
+      </div>
+      <p>{{ analysis.summary.conclusion }}</p>
+    </section>
+
+    <section class="kpi-grid">
+      <div class="kpi"><span>{{ analysis.summary.avg_speed_before }}</span><small>Velocidad antes km/h</small></div>
+      <div class="kpi"><span>{{ analysis.summary.avg_speed_after }}</span><small>Velocidad después km/h</small></div>
+      <div class="kpi"><span>{{ analysis.summary.time_delta_pct }}%</span><small>Variación tiempo</small></div>
+      <div class="kpi"><span>{{ analysis.summary.routes_analyzed }}</span><small>Rutas analizadas</small></div>
+    </section>
+
+    {% include "cruces/partials/executive_analysis.html" %}
+
+    {% if analysis_charts %}
+      <section class="chart-area">
+        <div class="section-title">
+          <h2>Panorama gr&aacute;fico</h2>
+          <span>{{ analysis_charts|length }} vistas disponibles</span>
+        </div>
+        <div class="chart-grid analysis-chart-grid">
+          {% for chart in analysis_charts %}
+            <article class="chart-card chart-card-{{ chart.slug }}">
+              <div class="chart-heading">
+                <h3>{{ chart.title }}</h3>
+                <p>{{ chart.description }}</p>
+              </div>
+              <div class="chart-wrap">
+                {{ chart.html|safe }}
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <section class="content-section">
+      <div class="section-title">
+        <h2>Detalle por ruta</h2>
+        <span>{{ analysis.route_rows|length }} ruta(s)</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ruta</th>
+              <th>Obs.</th>
+              <th>Vel. antes</th>
+              <th>Vel. después</th>
+              <th>Δ vel.</th>
+              <th>Resultado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in analysis.route_rows %}
+              <tr>
+                <td>{{ row.route }}</td>
+                <td>{{ row.samples_before }}/{{ row.samples_after }}</td>
+                <td>{{ row.speed_before }}</td>
+                <td>{{ row.speed_after }}</td>
+                <td class="{% if row.speed_delta_pct > 0 %}pct-pos{% elif row.speed_delta_pct < 0 %}pct-neg{% endif %}">{{ row.speed_delta_pct }}%</td>
+                <td><span class="status-pill status-{{ row.result }}">{{ row.result_label }}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="public-footer">
+      Reporte compartido por UOCT · expira {{ share.expires_at|date:"d/m/Y H:i" }}
+    </footer>
+  </main>
+</body>
+</html>

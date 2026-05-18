@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}{{ analysis.name }} | UOCT{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>{{ analysis.name }}</h1>
+    <p>
+      <a href="{{ analysis.cruce.get_absolute_url }}">{{ analysis.cruce.interseccion }}</a>
+      · {{ analysis.horario_inicio|time:"H:i" }} - {{ analysis.horario_fin|time:"H:i" }}
+    </p>
+  </div>
+  <div class="button-row">
+    <a class="button secondary" href="{% url 'cruces:analysis_export_excel' analysis.pk %}">Excel</a>
+    <a class="button secondary" href="{% url 'cruces:analysis_export_pdf' analysis.pk %}">PDF</a>
+    <a class="button primary" href="{% url 'cruces:analysis_create' %}?cruce={{ analysis.cruce.pk }}">Nuevo análisis</a>
+    <a class="button secondary" href="{% url 'cruces:analysis_list' %}">Volver</a>
+  </div>
+</header>
+
+<section class="hero-result result-{{ analysis.result }}">
+  <div>
+    <span>{{ analysis.get_result_display }}</span>
+    <strong>{{ analysis.summary.speed_delta_pct|default:"0" }}%</strong>
+    <small>Variación promedio de velocidad</small>
+  </div>
+  <p>{{ analysis.summary.conclusion }}</p>
+</section>
+
+<section class="kpi-grid">
+  <div class="kpi">
+    <span>{{ analysis.summary.avg_speed_before }}</span>
+    <small>Velocidad antes km/h</small>
+  </div>
+  <div class="kpi">
+    <span>{{ analysis.summary.avg_speed_after }}</span>
+    <small>Velocidad después km/h</small>
+  </div>
+  <div class="kpi">
+    <span>{{ analysis.summary.time_delta_pct }}%</span>
+    <small>Variación tiempo</small>
+  </div>
+  <div class="kpi">
+    <span>{{ analysis.summary.routes_analyzed }}</span>
+    <small>Rutas analizadas</small>
+  </div>
+</section>
+
+{% include "cruces/partials/executive_analysis.html" %}
+
+{% if analysis.summary.warnings %}
+  <section class="panel warn-panel">
+    <h2>Advertencias de calidad</h2>
+    <ul class="simple-list">
+      {% for warning in analysis.summary.warnings %}
+        <li>{{ warning }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+{% if can_manage_analysis %}
+  <section class="content-section">
+    <div class="section-title">
+      <h2>Compartir reporte</h2>
+      <span>Enlaces con expiración</span>
+    </div>
+    <form method="post" action="{% url 'cruces:analysis_share_create' analysis.pk %}" class="share-form">
+      {% csrf_token %}
+      <input type="text" name="title" value="Reporte {{ analysis.name }}" aria-label="Título del enlace">
+      <select name="days" aria-label="Vigencia">
+        <option value="7">7 días</option>
+        <option value="30" selected>30 días</option>
+        <option value="90">90 días</option>
+        <option value="365">1 año</option>
+      </select>
+      <button class="button primary" type="submit">Crear enlace</button>
+    </form>
+    {% if active_shares %}
+      <div class="share-list">
+        {% for share in active_shares %}
+          <div class="share-row" id="share-{{ share.pk }}">
+            <div>
+              <strong>{{ share.title }}</strong>
+              <small>
+                <a href="{{ request.scheme }}://{{ request.get_host }}{{ share.get_absolute_url }}" target="_blank">
+                  {{ request.scheme }}://{{ request.get_host }}{{ share.get_absolute_url }}
+                </a>
+                · expira {{ share.expires_at|date:"d/m/Y H:i" }}
+              </small>
+            </div>
+            <form method="post" action="{% url 'cruces:shared_report_revoke' share.pk %}">
+              {% csrf_token %}
+              <button class="button secondary" type="submit">Revocar</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+{% endif %}
+
+{% if analysis_charts %}
+  <section class="chart-area">
+    <div class="section-title">
+      <h2>Panorama gr&aacute;fico</h2>
+      <span>{{ analysis_charts|length }} vistas disponibles</span>
+    </div>
+    <div class="chart-grid analysis-chart-grid">
+      {% for chart in analysis_charts %}
+        <article class="chart-card chart-card-{{ chart.slug }}">
+          <div class="chart-heading">
+            <h3>{{ chart.title }}</h3>
+            <p>{{ chart.description }}</p>
+          </div>
+          <div class="chart-wrap">
+            {{ chart.html|safe }}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+
+{% if speed_delta_chart and not analysis_charts %}
+  <section class="content-section">
+    <div class="section-title">
+      <h2>Variación de velocidad por ruta</h2>
+      <span>Top 30 ordenadas por mejora</span>
+    </div>
+    <div class="chart-wrap">
+      {{ speed_delta_chart|safe }}
+    </div>
+  </section>
+{% endif %}
+
+<section class="detail-grid">
+  <article class="panel">
+    <h2>Calidad archivo ANTES</h2>
+    <dl class="data-list">
+      <dt>Filas totales</dt><dd>{{ analysis.summary.before_quality.total_rows }}</dd>
+      <dt>Procesadas</dt><dd>{{ analysis.summary.before_quality.processed_rows }}</dd>
+      <dt>Fuera de horario</dt><dd>{{ analysis.summary.before_quality.out_of_window_rows }}</dd>
+      <dt>Inválidas</dt><dd>{{ analysis.summary.before_quality.invalid_rows }}</dd>
+      <dt>Rutas</dt><dd>{{ analysis.summary.before_quality.routes }}</dd>
+    </dl>
+  </article>
+  <article class="panel">
+    <h2>Calidad archivo DESPUÉS</h2>
+    <dl class="data-list">
+      <dt>Filas totales</dt><dd>{{ analysis.summary.after_quality.total_rows }}</dd>
+      <dt>Procesadas</dt><dd>{{ analysis.summary.after_quality.processed_rows }}</dd>
+      <dt>Fuera de horario</dt><dd>{{ analysis.summary.after_quality.out_of_window_rows }}</dd>
+      <dt>Inválidas</dt><dd>{{ analysis.summary.after_quality.invalid_rows }}</dd>
+      <dt>Rutas</dt><dd>{{ analysis.summary.after_quality.routes }}</dd>
+    </dl>
+  </article>
+</section>
+
+<section class="content-section">
+  <div class="section-title">
+    <h2>Detalle por ruta</h2>
+    <span>{{ analysis.route_rows|length }} ruta(s)</span>
+  </div>
+  {% if analysis.route_rows %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Ruta</th>
+            <th>Obs.</th>
+            <th>Vel. antes</th>
+            <th>Vel. después</th>
+            <th>Δ vel.</th>
+            <th>Tiempo antes</th>
+            <th>Tiempo después</th>
+            <th>Δ tiempo</th>
+            <th>Resultado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in analysis.route_rows %}
+            <tr>
+              <td>{{ row.route }}</td>
+              <td>{{ row.samples_before }}/{{ row.samples_after }}</td>
+              <td>
+                {{ row.speed_before }}
+                <small>P15-P85: {{ row.speed_p15_before }} - {{ row.speed_p85_before }}</small>
+              </td>
+              <td>
+                {{ row.speed_after }}
+                <small>P15-P85: {{ row.speed_p15_after }} - {{ row.speed_p85_after }}</small>
+              </td>
+              <td class="{% if row.speed_delta_pct > 0 %}pct-pos{% elif row.speed_delta_pct < 0 %}pct-neg{% endif %}">
+                {{ row.speed_delta_pct }}%
+              </td>
+              <td>{{ row.time_before }} s</td>
+              <td>{{ row.time_after }} s</td>
+              <td>{{ row.time_delta_pct }}%</td>
+              <td><span class="status-pill status-{{ row.result }}">{{ row.result_label }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state compact">
+      <p>No hubo rutas comunes para el horario seleccionado.</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

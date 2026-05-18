@@ -1,0 +1,66 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}UOCT{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <div>
+        <strong>UOCT</strong>
+        <small>Plataforma de Cruces</small>
+      </div>
+    </div>
+    <nav class="nav">
+      <span class="nav-label">Operación</span>
+      <a class="{% if request.resolver_match.url_name == 'dashboard' %}on{% endif %}" href="{% url 'cruces:dashboard' %}">Dashboard</a>
+      <a class="{% if request.resolver_match.url_name == 'list' or request.resolver_match.url_name == 'detail' or request.resolver_match.url_name == 'create' or request.resolver_match.url_name == 'update' %}on{% endif %}" href="{% url 'cruces:list' %}">Cruces</a>
+      <a class="{% if request.resolver_match.url_name == 'analysis_list' or request.resolver_match.url_name == 'analysis_detail' or request.resolver_match.url_name == 'analysis_create' %}on{% endif %}" href="{% url 'cruces:analysis_list' %}">Análisis</a>
+      <span class="nav-label">Carga de datos</span>
+      <a class="{% if request.resolver_match.url_name == 'import_bitacora' %}on{% endif %}" href="{% url 'cruces:import_bitacora' %}">Importar bitácora</a>
+      <a href="{% url 'cruces:analysis_create' %}">Nuevo análisis</a>
+      <a href="{% url 'cruces:create' %}">Nuevo cruce</a>
+      {% if request.user.is_staff %}
+        <span class="nav-label">Sistema</span>
+        <a href="{% url 'admin:index' %}">Admin</a>
+      {% endif %}
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <span>{{ request.user }}</span>
+        <small>{{ request.user.get_role_display|default:"Usuario" }}</small>
+      </div>
+      <form method="post" action="{% url 'logout' %}">
+        {% csrf_token %}
+        <button class="link-button" type="submit">Cerrar sesión</button>
+      </form>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <span class="eyebrow">Plataforma UOCT</span>
+        <strong>Gestión de cruces y análisis big data</strong>
+      </div>
+      <div class="topbar-actions">
+        <a class="button secondary compact" href="{% url 'cruces:analysis_create' %}">Nuevo análisis</a>
+        <a class="button primary compact" href="{% url 'cruces:import_bitacora' %}">Importar</a>
+      </div>
+    </div>
+    {% if messages %}
+      <div class="messages">
+        {% for message in messages %}
+          <div class="message {{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

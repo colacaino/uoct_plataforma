@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Importar bitácora | UOCT{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Importar bitácora</h1>
+    <p>Carga la bitácora real de terrenos, revisa la vista previa y confirma solo los cruces válidos.</p>
+  </div>
+  <a class="button secondary" href="{% url 'cruces:list' %}">Volver</a>
+</header>
+
+<section class="panel">
+  <h2>Archivo Excel</h2>
+  <form method="post" enctype="multipart/form-data" class="upload-form">
+    {% csrf_token %}
+    {{ form.file.label_tag }}
+    {{ form.file }}
+    {% if form.file.help_text %}<small>{{ form.file.help_text }}</small>{% endif %}
+    {% for error in form.file.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+    <div class="form-actions">
+      <button class="button primary" type="submit">Leer archivo</button>
+    </div>
+  </form>
+</section>
+
+{% if preview %}
+  <section class="content-section">
+    <div class="section-title">
+      <div>
+        <h2>Vista previa</h2>
+        <p class="muted">
+          {{ preview.file_name }} · Hoja {{ preview.sheet_name }} · Encabezados en fila {{ preview.header_row }}
+        </p>
+      </div>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="confirm">
+        <button class="button primary" type="submit" {% if preview.counters.ready == 0 %}disabled{% endif %}>
+          Guardar {{ preview.counters.ready }} cruce(s)
+        </button>
+      </form>
+    </div>
+
+    <div class="kpi-grid compact-kpis">
+      <div class="kpi"><span>{{ preview.counters.total }}</span><small>Filas detectadas</small></div>
+      <div class="kpi"><span>{{ preview.counters.ready }}</span><small>Listas para guardar</small></div>
+      <div class="kpi"><span>{{ preview.counters.duplicate }}</span><small>Duplicadas</small></div>
+      <div class="kpi"><span>{{ preview.counters.error }}</span><small>Con error</small></div>
+      <div class="kpi"><span>{{ preview.counters.warning }}</span><small>Con advertencia</small></div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Estado</th>
+            <th>Fila</th>
+            <th>Código</th>
+            <th>Intersección</th>
+            <th>Fecha</th>
+            <th>Jornada</th>
+            <th>Horario</th>
+            <th>Proyecto</th>
+            <th>Semáforo</th>
+            <th>Mod.</th>
+            <th>Detalle</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in preview.rows %}
+            <tr class="row-{{ row.status }}">
+              <td><span class="status-pill status-{{ row.status }}">{{ row.status_label }}</span></td>
+              <td>{{ row.row_number }}</td>
+              <td>{{ row.codigo_j|default:"-" }}</td>
+              <td>{{ row.interseccion }}</td>
+              <td>{{ row.fecha_terreno|default:"-" }}</td>
+              <td>{{ row.jornada|default:"-" }}</td>
+              <td>{{ row.horario_inicio|default:"-" }} - {{ row.horario_fin|default:"-" }}</td>
+              <td>{{ row.project_name|default:"-" }}</td>
+              <td>{{ row.estado_semaforo|default:"-" }}</td>
+              <td>{% if row.realizo_modificacion %}Sí{% else %}No{% endif %}</td>
+              <td>
+                {{ row.status_detail }}
+                {% if row.warnings %}
+                  <small>{{ row.warnings|join:" " }}</small>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+{% endblock %}

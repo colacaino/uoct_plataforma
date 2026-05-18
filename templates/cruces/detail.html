@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}{{ cruce.interseccion }} | UOCT{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>{{ cruce.interseccion }}</h1>
+    <p>{{ cruce.codigo_j|default:"Sin código J" }}{% if cruce.comuna %} · {{ cruce.comuna }}{% endif %}</p>
+  </div>
+  <div class="button-row">
+    <a class="button primary" href="{% url 'cruces:analysis_create' %}?cruce={{ cruce.pk }}">Nuevo análisis</a>
+    <a class="button secondary" href="{% url 'cruces:update' cruce.pk %}">Editar</a>
+    <a class="button secondary" href="{% url 'cruces:list' %}">Volver</a>
+  </div>
+</header>
+
+<section class="detail-grid">
+  <article class="panel">
+    <h2>Identificación</h2>
+    <dl class="data-list">
+      <dt>Fecha</dt><dd>{{ cruce.fecha_terreno|date:"d/m/Y"|default:"-" }}</dd>
+      <dt>Jornada</dt><dd>{{ cruce.jornada|default:"-" }}</dd>
+      <dt>Horario</dt><dd>{{ cruce.horario_inicio|time:"H:i"|default:"-" }} - {{ cruce.horario_fin|time:"H:i"|default:"-" }}</dd>
+      <dt>Evaluador</dt><dd>{{ cruce.evaluador|default:"-" }}</dd>
+      <dt>Solicita</dt><dd>{{ cruce.solicita|default:"-" }}</dd>
+      <dt>Proyecto</dt><dd>{{ cruce.project.name|default:"-" }}</dd>
+    </dl>
+  </article>
+
+  <article class="panel">
+    <h2>Estado</h2>
+    <dl class="data-list">
+      <dt>Estado cruce</dt><dd>{{ cruce.estado|default:"-" }}</dd>
+      <dt>Semáforo</dt><dd>{{ cruce.estado_semaforo|default:"-" }}</dd>
+      <dt>Modificación</dt><dd>{% if cruce.realizo_modificacion %}Sí{% else %}No{% endif %}</dd>
+      <dt>Creado por</dt><dd>{{ cruce.created_by|default:"-" }}</dd>
+      <dt>Actualizado</dt><dd>{{ cruce.updated_at|date:"d/m/Y H:i" }}</dd>
+    </dl>
+  </article>
+</section>
+
+<section class="detail-grid">
+  <article class="panel">
+    <h2>Problema / motivo</h2>
+    <p class="long-text">{{ cruce.problema|default:"Sin descripción." }}</p>
+  </article>
+  <article class="panel">
+    <h2>Observaciones</h2>
+    <p class="long-text">{{ cruce.observaciones|default:"Sin observaciones." }}</p>
+  </article>
+</section>
+
+{% if cruce.modificacion_texto or cruce.rutas_texto %}
+  <section class="detail-grid">
+    <article class="panel">
+      <h2>Modificación</h2>
+      <p class="long-text">{{ cruce.modificacion_texto|default:"Sin detalle." }}</p>
+    </article>
+    <article class="panel">
+      <h2>Rutas asociadas</h2>
+      <p class="long-text">{{ cruce.rutas_texto|default:"Sin rutas registradas." }}</p>
+    </article>
+  </section>
+{% endif %}
+
+<section class="content-section" id="equipo-acceso">
+  <div class="section-title">
+    <h2>Equipo con acceso</h2>
+    <span>{{ shared_users|length }} usuario(s) compartido(s)</span>
+  </div>
+
+  <div class="team-access-grid">
+    <article class="team-member owner">
+      <div>
+        <strong>{{ cruce.created_by|default:"Sin dueño asignado" }}</strong>
+        <small>Due&ntilde;o del cruce</small>
+      </div>
+    </article>
+
+    {% for user in shared_users %}
+      <article class="team-member">
+        <div>
+          <strong>{{ user }}</strong>
+          <small>{{ user.get_role_display }} &middot; {{ user.username }}</small>
+        </div>
+        {% if can_manage_cruce %}
+          <form method="post" action="{% url 'cruces:cruce_unshare_user' cruce.pk user.pk %}">
+            {% csrf_token %}
+            <button class="button secondary small" type="submit">Quitar</button>
+          </form>
+        {% endif %}
+      </article>
+    {% empty %}
+      <article class="team-member muted">
+        <div>
+          <strong>Sin usuarios compartidos</strong>
+          <small>Comparte este cruce para que el equipo vea archivos, an&aacute;lisis y reportes.</small>
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+
+  {% if can_manage_cruce %}
+    <form method="post" action="{% url 'cruces:cruce_share_user' cruce.pk %}" class="share-user-form">
+      {% csrf_token %}
+      <div class="field">
+        {{ share_user_form.user.label_tag }}
+        {{ share_user_form.user }}
+      </div>
+      <div class="form-actions">
+        <button class="button primary" type="submit">Compartir acceso</button>
+      </div>
+    </form>
+  {% endif %}
+</section>
+
+<section class="content-section" id="biblioteca-archivos">
+  <div class="section-title">
+    <h2>Biblioteca de archivos</h2>
+    <span>{{ library_files|length }} archivo(s)</span>
+  </div>
+
+  {% if file_type_summary %}
+    <div class="file-summary-grid">
+      {% for item in file_type_summary %}
+        <div class="file-summary-card">
+          <strong>{{ item.count }}</strong>
+          <span>{{ item.label }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if can_manage_cruce %}
+    <form method="post" action="{% url 'cruces:cruce_file_upload' cruce.pk %}" enctype="multipart/form-data" class="file-upload-panel">
+      {% csrf_token %}
+      <div class="field">
+        {{ file_upload_form.file.label_tag }}
+        {{ file_upload_form.file }}
+        <small>{{ file_upload_form.file.help_text }}</small>
+      </div>
+      <div class="field">
+        {{ file_upload_form.file_type.label_tag }}
+        {{ file_upload_form.file_type }}
+      </div>
+      <div class="form-actions">
+        <button class="button primary" type="submit">Agregar archivo</button>
+      </div>
+    </form>
+  {% endif %}
+
+  {% if library_files %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Archivo</th>
+            <th>Tipo</th>
+            <th>Tama&ntilde;o</th>
+            <th>Subido por</th>
+            <th>Fecha</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in library_files %}
+            <tr>
+              <td><a href="{% url 'cruces:uploaded_file_download' item.pk %}">{{ item.original_name }}</a></td>
+              <td><span class="file-type-pill file-type-{{ item.file_type }}">{{ item.get_file_type_display }}</span></td>
+              <td>{{ item.file.size|filesizeformat }}</td>
+              <td>{{ item.uploaded_by|default:"-" }}</td>
+              <td>{{ item.created_at|date:"d/m/Y H:i" }}</td>
+              <td>
+                <div class="button-row compact-actions">
+                  <a class="button secondary small" href="{% url 'cruces:uploaded_file_download' item.pk %}">Descargar</a>
+                  {% if can_manage_cruce %}
+                    <form method="post" action="{% url 'cruces:uploaded_file_delete' item.pk %}">
+                      {% csrf_token %}
+                      <button class="button secondary small" type="submit">Eliminar</button>
+                    </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state compact">
+      <p>Este cruce todav&iacute;a no tiene archivos asociados.</p>
+    </div>
+  {% endif %}
+</section>
+
+<section class="content-section">
+  <div class="section-title">
+    <h2>Análisis guardados</h2>
+    <span>{{ analyses|length }} registro(s)</span>
+  </div>
+  {% if analyses %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Horario</th>
+            <th>Resultado</th>
+            <th>Archivos</th>
+            <th>Reportes</th>
+            <th>Creado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for analysis in analyses %}
+            <tr>
+              <td><a href="{{ analysis.get_absolute_url }}">{{ analysis.name }}</a></td>
+              <td>{{ analysis.horario_inicio|time:"H:i"|default:"-" }} - {{ analysis.horario_fin|time:"H:i"|default:"-" }}</td>
+              <td><span class="status-pill status-{{ analysis.result }}">{{ analysis.get_result_display }}</span></td>
+              <td>
+                <div class="file-link-stack">
+                  {% if analysis.file_before %}
+                    <a href="{% url 'cruces:uploaded_file_download' analysis.file_before.pk %}">Antes</a>
+                  {% endif %}
+                  {% if analysis.file_after %}
+                    <a href="{% url 'cruces:uploaded_file_download' analysis.file_after.pk %}">Despu&eacute;s</a>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                <div class="file-link-stack">
+                  <a href="{% url 'cruces:analysis_export_excel' analysis.pk %}">Excel</a>
+                  <a href="{% url 'cruces:analysis_export_pdf' analysis.pk %}">PDF</a>
+                </div>
+              </td>
+              <td>{{ analysis.created_at|date:"d/m/Y H:i" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state compact">
+      <p>Este cruce todavía no tiene análisis de big data. Ese módulo se implementa en la Fase 3.</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

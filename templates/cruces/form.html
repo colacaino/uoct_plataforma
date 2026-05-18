@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}{% if object %}Editar{% else %}Nuevo{% endif %} cruce | UOCT{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>{% if object %}Editar cruce{% else %}Nuevo cruce{% endif %}</h1>
+    <p>Ficha técnica base del cruce. En la fase siguiente se cargará desde la bitácora Excel.</p>
+  </div>
+  <a class="button secondary" href="{% url 'cruces:list' %}">Volver</a>
+</header>
+
+<form method="post" class="panel form-grid">
+  {% csrf_token %}
+  {% for field in form %}
+    <div class="field {% if field.name in 'problema observaciones modificacion_texto rutas_texto' %}full{% endif %}">
+      {% if field.field.widget.input_type == "checkbox" %}
+        <label class="check-row">
+          {{ field }}
+          <span>{{ field.label }}</span>
+        </label>
+      {% else %}
+        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+        {{ field }}
+      {% endif %}
+      {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+      {% for error in field.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+    </div>
+  {% endfor %}
+  <div class="form-actions full">
+    <button class="button primary" type="submit">Guardar cruce</button>
+    <a class="button secondary" href="{% url 'cruces:list' %}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

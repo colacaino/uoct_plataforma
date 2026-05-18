@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | UOCT{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Dashboard</h1>
+    <p>Resumen operativo de cruces, análisis y reportes generados en la plataforma.</p>
+  </div>
+  <div class="button-row">
+    <a class="button secondary" href="{% url 'cruces:analysis_create' %}">Nuevo análisis</a>
+    <a class="button secondary" href="{% url 'cruces:import_bitacora' %}">Importar bitácora</a>
+    <a class="button primary" href="{% url 'cruces:create' %}">Nuevo cruce</a>
+  </div>
+</header>
+
+<section class="workflow-grid">
+  <a class="workflow-card" href="{% url 'cruces:import_bitacora' %}">
+    <span>1</span>
+    <strong>Importar bitácora</strong>
+    <small>Carga cruces reales, estados, proyectos y rutas asociadas.</small>
+  </a>
+  <a class="workflow-card" href="{% url 'cruces:analysis_create' %}">
+    <span>2</span>
+    <strong>Analizar rutas</strong>
+    <small>Compara archivos antes/después y guarda el resultado en un cruce.</small>
+  </a>
+  <a class="workflow-card" href="{% url 'cruces:analysis_list' %}">
+    <span>3</span>
+    <strong>Reportar</strong>
+    <small>Revisa gráficos, exporta PDF/Excel y comparte enlaces.</small>
+  </a>
+</section>
+
+<section class="kpi-grid">
+  <div class="kpi">
+    <small>Cruces registrados</small>
+    <span>{{ total_cruces }}</span>
+  </div>
+  <div class="kpi">
+    <small>Análisis guardados</small>
+    <span>{{ total_analisis }}</span>
+  </div>
+  <div class="kpi">
+    <small>Con modificación</small>
+    <span>{{ con_modificacion }}</span>
+  </div>
+  <div class="kpi {% if avg_speed_delta != None and avg_speed_delta < 0 %}kpi-danger{% elif avg_speed_delta != None and avg_speed_delta > 0 %}kpi-success{% endif %}">
+    <small>Delta velocidad promedio</small>
+    <span>{{ avg_speed_delta|default:"-" }}{% if avg_speed_delta != None %}%{% endif %}</span>
+  </div>
+</section>
+
+{% if results_chart or speed_chart %}
+  <section class="chart-grid">
+    {% if results_chart %}
+      <article class="content-section">
+        <div class="section-title">
+          <h2>Resultados de análisis</h2>
+          <span>{{ total_analisis }} total</span>
+        </div>
+        <div class="chart-wrap">{{ results_chart|safe }}</div>
+      </article>
+    {% endif %}
+    {% if speed_chart %}
+      <article class="content-section">
+        <div class="section-title">
+          <h2>Delta velocidad reciente</h2>
+          <span>Últimos 12</span>
+        </div>
+        <div class="chart-wrap">{{ speed_chart|safe }}</div>
+      </article>
+    {% endif %}
+  </section>
+{% endif %}
+
+<section class="content-section">
+  <div class="section-title">
+    <h2>Últimos análisis</h2>
+    <a href="{% url 'cruces:analysis_list' %}">Ver todos</a>
+  </div>
+  {% if ultimos_analisis %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Análisis</th>
+            <th>Cruce</th>
+            <th>Resultado</th>
+            <th>Delta vel.</th>
+            <th>Creado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for analysis in ultimos_analisis %}
+            <tr>
+              <td><a href="{{ analysis.get_absolute_url }}">{{ analysis.name }}</a></td>
+              <td>{{ analysis.cruce.interseccion }}</td>
+              <td><span class="status-pill status-{{ analysis.result }}">{{ analysis.get_result_display }}</span></td>
+              <td>{{ analysis.summary.speed_delta_pct|default:"0" }}%</td>
+              <td>{{ analysis.created_at|date:"d/m/Y H:i" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state compact">
+      <p>Todavía no hay análisis guardados.</p>
+      <a class="button primary" href="{% url 'cruces:analysis_create' %}">Crear análisis</a>
+    </div>
+  {% endif %}
+</section>
+
+<section class="content-section">
+  <div class="section-title">
+    <h2>Últimos cruces</h2>
+    <a href="{% url 'cruces:list' %}">Ver todos</a>
+  </div>
+  {% if ultimos_cruces %}
+    <div class="item-grid">
+      {% for cruce in ultimos_cruces %}
+        <article class="item-card">
+          <div class="item-top">
+            <span class="muted">{{ cruce.codigo_j|default:"Sin código" }}</span>
+            <span class="tag">{{ cruce.jornada|default:"-" }}</span>
+          </div>
+          <h3><a href="{{ cruce.get_absolute_url }}">{{ cruce.interseccion }}</a></h3>
+          <p>{{ cruce.project.name|default:"Sin proyecto asociado" }}</p>
+          <div class="item-meta">
+            <span>{{ cruce.fecha_terreno|date:"d/m/Y"|default:"Sin fecha" }}</span>
+            <span>{{ cruce.evaluador|default:"Sin evaluador" }}</span>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <h2>Sin cruces registrados</h2>
+      <p>Crea el primero manualmente o importa la bitácora de terrenos.</p>
+      <div class="button-row center">
+        <a class="button secondary" href="{% url 'cruces:import_bitacora' %}">Importar bitácora</a>
+        <a class="button primary" href="{% url 'cruces:create' %}">Crear cruce</a>
+      </div>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Eliminar cruce | UOCT{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Eliminar cruce</h1>
+    <p>Esta acción elimina la ficha y los análisis asociados al cruce.</p>
+  </div>
+</header>
+
+<form method="post" class="panel narrow">
+  {% csrf_token %}
+  <h2>{{ object.interseccion }}</h2>
+  <p>Confirma que quieres eliminar este cruce.</p>
+  <div class="form-actions">
+    <button class="button danger" type="submit">Eliminar</button>
+    <a class="button secondary" href="{{ object.get_absolute_url }}">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

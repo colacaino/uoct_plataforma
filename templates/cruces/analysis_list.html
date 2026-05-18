@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Análisis | UOCT{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Análisis</h1>
+    <p>Historial de comparaciones big data guardadas en la plataforma.</p>
+  </div>
+  <a class="button primary" href="{% url 'cruces:analysis_create' %}">Nuevo análisis</a>
+</header>
+
+<form class="filters" method="get">
+  <input type="search" name="q" value="{{ q }}" placeholder="Buscar por análisis, cruce o código">
+  <select name="result">
+    <option value="">Todos los resultados</option>
+    {% for value,label in result_choices %}
+      <option value="{{ value }}" {% if result == value %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <button class="button secondary" type="submit">Filtrar</button>
+</form>
+
+{% if analyses %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Análisis</th>
+          <th>Cruce</th>
+          <th>Horario</th>
+          <th>Resultado</th>
+          <th>Δ Velocidad</th>
+          <th>Rutas</th>
+          <th>Creado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for analysis in analyses %}
+          <tr>
+            <td><a href="{{ analysis.get_absolute_url }}">{{ analysis.name }}</a></td>
+            <td>
+              <a href="{{ analysis.cruce.get_absolute_url }}">{{ analysis.cruce.interseccion }}</a>
+              <small>{{ analysis.cruce.codigo_j|default:"Sin código" }}</small>
+            </td>
+            <td>{{ analysis.horario_inicio|time:"H:i"|default:"-" }} - {{ analysis.horario_fin|time:"H:i"|default:"-" }}</td>
+            <td><span class="status-pill status-{{ analysis.result }}">{{ analysis.get_result_display }}</span></td>
+            <td>{{ analysis.summary.speed_delta_pct|default:"0" }}%</td>
+            <td>{{ analysis.summary.routes_analyzed|default:"0" }}</td>
+            <td>{{ analysis.created_at|date:"d/m/Y H:i" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <div class="empty-state">
+    <h2>Sin análisis guardados</h2>
+    <p>Carga dos archivos de rutas para crear la primera comparación.</p>
+    <a class="button primary" href="{% url 'cruces:analysis_create' %}">Nuevo análisis</a>
+  </div>
+{% endif %}
+{% endblock %}
