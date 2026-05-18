@@ -38,7 +38,7 @@
     </div>
     <div class="form-grid">
       {% for field in form %}
-        {% if field.name == 'cruce' or field.name == 'name' or field.name == 'horario_inicio' or field.name == 'horario_fin' or field.name == 'threshold_pct' %}
+        {% if field.name == 'cruce' or field.name == 'name' or field.name == 'horario_inicio' or field.name == 'horario_fin' %}
           <div class="field">
             <label for="{{ field.id_for_label }}">{{ field.label }}</label>
             {{ field }}
@@ -77,6 +77,42 @@
   <section class="panel wizard-section">
     <div class="wizard-heading">
       <span>3</span>
+      <div>
+        <h2>Parametros de control</h2>
+        <p>Ajusta percentiles, porcentaje de decision, largo minimo y cantidad de muestras.</p>
+      </div>
+    </div>
+    <div class="form-grid">
+      {% for field in form %}
+        {% if field.name == 'threshold_pct' or field.name == 'percentile_low' or field.name == 'percentile_high' or field.name == 'min_length_m' or field.name == 'min_samples' %}
+          <div class="field">
+            <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+            {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
+            {% for error in field.errors %}<div class="field-error">{{ error }}</div>{% endfor %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="control-help-grid">
+      <article>
+        <strong>Umbral</strong>
+        <span>Define cuanto debe cambiar la velocidad para decir que mejora o empeora.</span>
+      </article>
+      <article>
+        <strong>Percentiles</strong>
+        <span>Permiten ver dispersion sin depender solo del promedio.</span>
+      </article>
+      <article>
+        <strong>Largo y muestras</strong>
+        <span>Evitan que rutas con poco dato o tramos demasiado cortos dominen el informe.</span>
+      </article>
+    </div>
+  </section>
+
+  <section class="panel wizard-section">
+    <div class="wizard-heading">
+      <span>4</span>
       <div>
         <h2>Rutas del cruce</h2>
         <p>Opcional. Permite limitar el análisis a rutas asociadas al cruce.</p>

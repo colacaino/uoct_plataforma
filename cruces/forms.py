@@ -179,6 +179,40 @@ class AnalysisCreateForm(forms.Form):
         initial=5,
         help_text="Sobre este porcentaje clasifica como mejora o empeoramiento.",
     )
+    percentile_low = forms.DecimalField(
+        label="Percentil bajo",
+        min_value=1,
+        max_value=49,
+        decimal_places=1,
+        max_digits=5,
+        initial=15,
+        help_text="Define el borde inferior del rango de dispersion mostrado por ruta.",
+    )
+    percentile_high = forms.DecimalField(
+        label="Percentil alto",
+        min_value=51,
+        max_value=99,
+        decimal_places=1,
+        max_digits=5,
+        initial=85,
+        help_text="Define el borde superior del rango de dispersion mostrado por ruta.",
+    )
+    min_length_m = forms.DecimalField(
+        label="Largo minimo de registro (m)",
+        min_value=0,
+        max_value=100000,
+        decimal_places=1,
+        max_digits=9,
+        initial=0,
+        help_text="Filtra registros muy cortos o ruidosos. Usa 0 para no aplicar filtro.",
+    )
+    min_samples = forms.IntegerField(
+        label="Minimo de observaciones por ruta",
+        min_value=1,
+        max_value=100000,
+        initial=1,
+        help_text="Rutas con menos muestras que este minimo se excluyen del resultado.",
+    )
     file_before = forms.FileField(
         label="Archivo ANTES",
         widget=forms.ClearableFileInput(attrs={"accept": ".xlsx,.xlsm", "class": "form-control"}),
@@ -209,3 +243,11 @@ class AnalysisCreateForm(forms.Form):
 
     def _clean_excel_file(self, field_name):
         return validate_excel_upload(self.cleaned_data[field_name])
+
+    def clean(self):
+        cleaned_data = super().clean()
+        low = cleaned_data.get("percentile_low")
+        high = cleaned_data.get("percentile_high")
+        if low is not None and high is not None and low >= high:
+            self.add_error("percentile_high", "El percentil alto debe ser mayor que el percentil bajo.")
+        return cleaned_data

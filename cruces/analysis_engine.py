@@ -135,7 +135,14 @@ def round_float(value: Any, digits: int = 2) -> float:
     return round(float(value), digits)
 
 
-def prepare_route_file(path: str | Path, start: time, end: time) -> PreparedRouteData:
+def prepare_route_file(
+    path: str | Path,
+    start: time,
+    end: time,
+    percentile_low: float = 15.0,
+    percentile_high: float = 85.0,
+    min_length_m: float = 0.0,
+) -> PreparedRouteData:
     df = pd.read_excel(path)
     if df.empty:
         raise ValueError("El archivo está vacío.")
@@ -162,31 +169,64 @@ def prepare_route_file(path: str | Path, start: time, end: time) -> PreparedRout
         & (work["length"] > 0)
         & (work["travel_time"] > 0)
     )
-    processed_df = work[valid_timestamp & in_range & valid_values].copy()
+    window_mask = valid_timestamp & in_range
+    short_length = window_mask & valid_values & (work["length"] < min_length_m) if min_length_m else pd.Series(False, index=work.index)
+    processed_df = work[window_mask & valid_values & ~short_length].copy()
     processed_df["speed"] = (processed_df["length"] / processed_df["travel_time"]) * 3.6
 
     route_data = {}
     for route_name, group in processed_df.groupby("route"):
         speed = group["speed"]
         travel_time = group["travel_time"]
+        length = group["length"]
+        speed_low = round_float(percentile(speed, percentile_low))
+        speed_high = round_float(percentile(speed, percentile_high))
+        time_low = round_float(percentile(travel_time, percentile_low))
+        time_high = round_float(percentile(travel_time, percentile_high))
         route_data[route_name] = {
             "speed_mean": round_float(speed.mean()),
             "speed_median": round_float(speed.median()),
             "speed_std": round_float(speed.std(ddof=1) if len(speed) > 1 else 0),
-            "speed_p15": round_float(percentile(speed, 15)),
-            "speed_p85": round_float(percentile(speed, 85)),
+            "speed_p_low": speed_low,
+            "speed_p_high": speed_high,
+            "speed_p15": speed_low,
+            "speed_p85": speed_high,
             "time_mean": round_float(travel_time.mean()),
             "time_median": round_float(travel_time.median()),
-            "time_p15": round_float(percentile(travel_time, 15)),
-            "time_p85": round_float(percentile(travel_time, 85)),
+            "time_p_low": time_low,
+            "time_p_high": time_high,
+            "time_p15": time_low,
+            "time_p85": time_high,
+            "length_mean_m": round_float(length.mean()),
+            "length_mean_km": round_float(length.mean() / 1000),
+            "length_min_m": round_float(length.min()),
+            "length_max_m": round_float(length.max()),
             "samples": int(len(group)),
         }
 
+    invalid_value_rows = int((window_mask & ~valid_values).sum())
+    invalid_timestamp_rows = int((~valid_timestamp).sum())
+    short_length_rows = int(short_length.sum())
+    empty_route_rows = int((window_mask & work["route"].eq("")).sum())
+    invalid_length_rows = int(
+        (window_mask & (work["length"].isna() | (work["length"] <= 0))).sum()
+    )
+    invalid_time_rows = int(
+        (window_mask & (work["travel_time"].isna() | (work["travel_time"] <= 0))).sum()
+    )
     stats = {
         "total_rows": int(total_rows),
         "processed_rows": int(len(processed_df)),
-        "invalid_rows": int((~valid_timestamp | (in_range & ~valid_values)).sum()),
+        "invalid_rows": int(invalid_timestamp_rows + invalid_value_rows + short_length_rows),
         "out_of_window_rows": int((valid_timestamp & ~in_range).sum()),
+        "invalid_timestamp_rows": invalid_timestamp_rows,
+        "invalid_value_rows": invalid_value_rows,
+        "empty_route_rows": empty_route_rows,
+        "invalid_length_rows": invalid_length_rows,
+        "invalid_time_rows": invalid_time_rows,
+        "short_length_rows": short_length_rows,
+        "min_length_m": round_float(min_length_m),
+        "processed_pct": _percentage(len(processed_df), total_rows),
         "routes": int(len(route_data)),
     }
     return PreparedRouteData(data=route_data, stats=stats, columns=columns)
@@ -488,6 +528,86 @@ def build_executive_analysis(summary: dict[str, Any] | None, route_rows: list[di
     }
 
 
+def _clamp_percentile_pair(percentile_low: float, percentile_high: float) -> tuple[float, float]:
+    low = max(1.0, min(49.0, float(percentile_low or 15.0)))
+    high = max(51.0, min(99.0, float(percentile_high or 85.0)))
+    if low >= high:
+        return 15.0, 85.0
+    return low, high
+
+
+def _analysis_methodology(parameters: dict[str, Any]) -> list[dict[str, str]]:
+    return [
+        {
+            "title": "Lectura de archivos",
+            "body": (
+                "Se detectan columnas de ruta, largo/distancia, tiempo de viaje y fecha/hora. "
+                "Solo entran al calculo las filas dentro de la ventana horaria elegida."
+            ),
+        },
+        {
+            "title": "Velocidad",
+            "body": "Velocidad km/h = largo en metros / tiempo en segundos * 3.6.",
+        },
+        {
+            "title": "Comparacion",
+            "body": "Delta % = (valor despues - valor antes) / valor antes * 100.",
+        },
+        {
+            "title": "Clasificacion",
+            "body": (
+                f"Una ruta mejora si la velocidad sube mas de {parameters['threshold_pct']}%. "
+                f"Empeora si baja mas de {parameters['threshold_pct']}%. Entre ambos limites queda como sin cambio."
+            ),
+        },
+        {
+            "title": "Percentiles",
+            "body": (
+                f"El rango P{parameters['percentile_low']}-P{parameters['percentile_high']} muestra dispersion: "
+                "valores extremos quedan fuera para leer la tendencia con menos ruido."
+            ),
+        },
+        {
+            "title": "Filas invalidas",
+            "body": (
+                "Una fila se descarta si no tiene hora valida, queda fuera del horario, no tiene ruta, "
+                "tiene largo/tiempo vacio o menor/igual a cero, o no cumple el largo minimo."
+            ),
+        },
+    ]
+
+
+def _route_analysis_text(row: dict[str, Any], threshold_pct: float) -> str:
+    result = row.get("result")
+    speed_delta = _number_from_mapping(row, "speed_delta_pct")
+    time_delta = _number_from_mapping(row, "time_delta_pct")
+    samples_before = int(_number_from_mapping(row, "samples_before"))
+    samples_after = int(_number_from_mapping(row, "samples_after"))
+    confidence = _confidence_label(samples_before, samples_after).lower()
+    if result == "mejoro":
+        base = (
+            f"La ruta mejora porque la velocidad sube {speed_delta:+.1f}%, "
+            f"superando el umbral de {threshold_pct:.1f}%."
+        )
+    elif result == "empeoro":
+        base = (
+            f"La ruta empeora porque la velocidad baja {speed_delta:+.1f}%, "
+            f"superando el umbral de {threshold_pct:.1f}% en sentido negativo."
+        )
+    else:
+        base = (
+            f"La ruta queda sin cambio porque la variacion de velocidad ({speed_delta:+.1f}%) "
+            f"queda dentro del rango de tolerancia de +/-{threshold_pct:.1f}%."
+        )
+    if time_delta > threshold_pct:
+        time_note = f" El tiempo de viaje aumenta {time_delta:+.1f}%, lo que refuerza una lectura negativa."
+    elif time_delta < -threshold_pct:
+        time_note = f" El tiempo de viaje baja {time_delta:+.1f}%, lo que refuerza una lectura favorable."
+    else:
+        time_note = f" El tiempo de viaje cambia {time_delta:+.1f}%, dentro de una variacion acotada."
+    return f"{base}{time_note} Confianza {confidence} con {samples_before}/{samples_after} observaciones."
+
+
 def compare_route_files(
     before_path: str | Path,
     after_path: str | Path,
@@ -495,16 +615,34 @@ def compare_route_files(
     end: time,
     threshold_pct: float = 5.0,
     route_hints_text: str = "",
+    percentile_low: float = 15.0,
+    percentile_high: float = 85.0,
+    min_length_m: float = 0.0,
+    min_samples: int = 1,
 ) -> dict[str, Any]:
-    before = prepare_route_file(before_path, start, end)
-    after = prepare_route_file(after_path, start, end)
+    percentile_low, percentile_high = _clamp_percentile_pair(percentile_low, percentile_high)
+    min_length_m = max(0.0, float(min_length_m or 0.0))
+    min_samples = max(1, int(min_samples or 1))
+    threshold_pct = max(0.0, float(threshold_pct or 0.0))
+    before = prepare_route_file(before_path, start, end, percentile_low, percentile_high, min_length_m)
+    after = prepare_route_file(after_path, start, end, percentile_low, percentile_high, min_length_m)
     common_routes = sorted(set(before.data).intersection(after.data))
     selected_routes, unmatched_hints = match_selected_routes(common_routes, route_hints_text)
 
     route_rows = []
+    excluded_low_sample_routes = []
     for route_name in selected_routes:
         before_row = before.data[route_name]
         after_row = after.data[route_name]
+        if min(before_row["samples"], after_row["samples"]) < min_samples:
+            excluded_low_sample_routes.append(
+                {
+                    "route": route_name,
+                    "samples_before": before_row["samples"],
+                    "samples_after": after_row["samples"],
+                }
+            )
+            continue
         speed_before = before_row["speed_mean"]
         speed_after = after_row["speed_mean"]
         time_before = before_row["time_mean"]
@@ -513,27 +651,45 @@ def compare_route_files(
         time_delta_pct = ((time_after - time_before) / time_before * 100) if time_before else 0
         route_result = classify_route(speed_delta_pct, threshold_pct)
 
-        route_rows.append(
-            {
-                "route": route_name,
-                "speed_before": round_float(speed_before),
-                "speed_after": round_float(speed_after),
-                "speed_delta_pct": round_float(speed_delta_pct),
-                "time_before": round_float(time_before),
-                "time_after": round_float(time_after),
-                "time_delta_pct": round_float(time_delta_pct),
-                "samples_before": before_row["samples"],
-                "samples_after": after_row["samples"],
-                "speed_std_before": before_row["speed_std"],
-                "speed_std_after": after_row["speed_std"],
-                "speed_p15_before": before_row["speed_p15"],
-                "speed_p85_before": before_row["speed_p85"],
-                "speed_p15_after": after_row["speed_p15"],
-                "speed_p85_after": after_row["speed_p85"],
-                "result": route_result,
-                "result_label": result_label(route_result),
-            }
-        )
+        row = {
+            "route": route_name,
+            "speed_before": round_float(speed_before),
+            "speed_after": round_float(speed_after),
+            "speed_delta_pct": round_float(speed_delta_pct),
+            "time_before": round_float(time_before),
+            "time_after": round_float(time_after),
+            "time_delta_pct": round_float(time_delta_pct),
+            "samples_before": before_row["samples"],
+            "samples_after": after_row["samples"],
+            "sample_delta_pct": round_float(
+                ((after_row["samples"] - before_row["samples"]) / before_row["samples"] * 100)
+                if before_row["samples"]
+                else 0
+            ),
+            "speed_std_before": before_row["speed_std"],
+            "speed_std_after": after_row["speed_std"],
+            "speed_p_low_before": before_row["speed_p_low"],
+            "speed_p_high_before": before_row["speed_p_high"],
+            "speed_p_low_after": after_row["speed_p_low"],
+            "speed_p_high_after": after_row["speed_p_high"],
+            "speed_p15_before": before_row["speed_p15"],
+            "speed_p85_before": before_row["speed_p85"],
+            "speed_p15_after": after_row["speed_p15"],
+            "speed_p85_after": after_row["speed_p85"],
+            "time_p_low_before": before_row["time_p_low"],
+            "time_p_high_before": before_row["time_p_high"],
+            "time_p_low_after": after_row["time_p_low"],
+            "time_p_high_after": after_row["time_p_high"],
+            "length_before_m": before_row["length_mean_m"],
+            "length_after_m": after_row["length_mean_m"],
+            "length_before_km": before_row["length_mean_km"],
+            "length_after_km": after_row["length_mean_km"],
+            "result": route_result,
+            "result_label": result_label(route_result),
+            "confidence_label": _confidence_label(before_row["samples"], after_row["samples"]),
+        }
+        row["analysis_text"] = _route_analysis_text(row, threshold_pct)
+        route_rows.append(row)
 
     route_rows.sort(key=lambda row: row["speed_delta_pct"], reverse=True)
     if route_rows:
@@ -561,16 +717,42 @@ def compare_route_files(
     if unmatched_hints:
         warnings.append(f"No coincidieron {len(unmatched_hints)} ruta(s) sugerida(s) desde la bitácora.")
 
+    if excluded_low_sample_routes:
+        warnings.append(
+            f"Se excluyeron {len(excluded_low_sample_routes)} ruta(s) por tener menos de {min_samples} observaciones."
+        )
+
+    parameters = {
+        "threshold_pct": round_float(threshold_pct, 1),
+        "percentile_low": round_float(percentile_low, 1),
+        "percentile_high": round_float(percentile_high, 1),
+        "min_length_m": round_float(min_length_m, 1),
+        "min_length_km": round_float(min_length_m / 1000, 3),
+        "min_samples": min_samples,
+        "start": start.strftime("%H:%M"),
+        "end": end.strftime("%H:%M"),
+        "speed_formula": "velocidad_kmh = largo_m / tiempo_s * 3.6",
+        "delta_formula": "delta_pct = (despues - antes) / antes * 100",
+        "time_unit": "segundos",
+        "speed_unit": "km/h",
+    }
+
     summary = {
         "result": result,
         "result_label": result_label(result),
         "threshold_pct": round_float(threshold_pct, 1),
+        "percentile_low": round_float(percentile_low, 1),
+        "percentile_high": round_float(percentile_high, 1),
+        "min_length_m": round_float(min_length_m, 1),
+        "min_samples": min_samples,
         "start": start.strftime("%H:%M"),
         "end": end.strftime("%H:%M"),
         "routes_before": before.stats["routes"],
         "routes_after": after.stats["routes"],
         "common_routes": len(common_routes),
+        "selected_routes": len(selected_routes),
         "routes_analyzed": len(route_rows),
+        "excluded_low_sample_routes": excluded_low_sample_routes,
         "avg_speed_before": round_float(avg_speed_before),
         "avg_speed_after": round_float(avg_speed_after),
         "speed_delta_pct": round_float(speed_delta_pct),
@@ -587,6 +769,15 @@ def compare_route_files(
         "warnings": warnings,
         "top_improvements": route_rows[:5],
         "top_degradations": sorted(route_rows, key=lambda row: row["speed_delta_pct"])[:5],
+        "parameters": parameters,
+        "methodology": _analysis_methodology(parameters),
+        "quality_explanation": {
+            "processed_rows": "Filas usadas efectivamente para calcular velocidades, tiempos y percentiles.",
+            "out_of_window_rows": "Filas con hora valida, pero fuera del rango horario elegido.",
+            "invalid_timestamp_rows": "Filas donde no se pudo leer una fecha/hora valida.",
+            "invalid_value_rows": "Filas dentro del horario, pero sin ruta, largo o tiempo usable.",
+            "short_length_rows": "Filas descartadas por estar bajo el largo minimo configurado.",
+        },
     }
     summary["conclusion"] = build_conclusion(summary)
     summary["executive_analysis"] = build_executive_analysis(summary, route_rows)

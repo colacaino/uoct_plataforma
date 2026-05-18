@@ -15,6 +15,60 @@
   </div>
 </header>
 
+<section class="cruce-overview">
+  <article class="cruce-main-card">
+    <span class="tag">{{ cruce.estado|default:"Sin estado" }}</span>
+    <h2>{{ cruce.interseccion }}</h2>
+    <p>
+      {{ cruce.problema|default:"Sin problema registrado."|truncatechars:220 }}
+    </p>
+    <div class="cruce-actions-row">
+      <a class="button primary" href="{% url 'cruces:analysis_create' %}?cruce={{ cruce.pk }}">Analizar este cruce</a>
+      <a class="button secondary" href="#biblioteca-archivos">Ver archivos</a>
+      <a class="button secondary" href="#equipo-acceso">Equipo</a>
+    </div>
+  </article>
+  <div class="cruce-metric-grid">
+    <article>
+      <strong>{{ cruce_summary.analysis_count }}</strong>
+      <span>Analisis guardados</span>
+    </article>
+    <article>
+      <strong>{{ cruce_summary.file_count }}</strong>
+      <span>Archivos asociados</span>
+    </article>
+    <article>
+      <strong>{{ cruce_summary.route_hint_count }}</strong>
+      <span>Rutas en bitacora</span>
+    </article>
+    <article>
+      <strong>{{ cruce_summary.shared_count }}</strong>
+      <span>Usuarios con acceso</span>
+    </article>
+  </div>
+</section>
+
+{% if cruce_summary.latest_analysis %}
+  <section class="latest-analysis-strip">
+    <div>
+      <span>Ultimo analisis</span>
+      <strong><a href="{{ cruce_summary.latest_analysis.get_absolute_url }}">{{ cruce_summary.latest_analysis.name }}</a></strong>
+    </div>
+    <div>
+      <span>Delta velocidad</span>
+      <strong>{{ cruce_summary.latest_speed_delta|default:"0" }}%</strong>
+    </div>
+    <div>
+      <span>Delta tiempo</span>
+      <strong>{{ cruce_summary.latest_time_delta|default:"0" }}%</strong>
+    </div>
+    <div>
+      <span>Rutas</span>
+      <strong>{{ cruce_summary.latest_routes_analyzed|default:"0" }}</strong>
+    </div>
+  </section>
+{% endif %}
+
 <section class="detail-grid">
   <article class="panel">
     <h2>Identificación</h2>
@@ -242,7 +296,7 @@
     </div>
   {% else %}
     <div class="empty-state compact">
-      <p>Este cruce todavía no tiene análisis de big data. Ese módulo se implementa en la Fase 3.</p>
+      <p>Este cruce todavia no tiene analisis de big data. Usa "Analizar este cruce" para cargar archivos antes/despues y generar el informe.</p>
     </div>
   {% endif %}
 </section>

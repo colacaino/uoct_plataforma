@@ -135,12 +135,47 @@ class RouteAnalysisEngineTests(TestCase):
 
         self.assertEqual(result["summary"]["result"], "mejoro")
         self.assertEqual(result["summary"]["routes_analyzed"], 1)
+        self.assertEqual(result["summary"]["parameters"]["threshold_pct"], 5.0)
+        self.assertEqual(result["summary"]["parameters"]["percentile_low"], 15.0)
+        self.assertIn("methodology", result["summary"])
         self.assertEqual(result["route_rows"][0]["route"], "Ruta A")
         self.assertEqual(result["route_rows"][0]["speed_delta_pct"], 100.0)
+        self.assertIn("analysis_text", result["route_rows"][0])
         executive = result["summary"]["executive_analysis"]
         self.assertEqual(executive["risk"]["level"], "bajo")
         self.assertEqual(executive["counts"]["improved"], 1)
         self.assertIn("Se analizaron", executive["headline"])
+
+    def test_compare_route_files_respects_minimum_samples(self):
+        before_path = self._make_routes_file(
+            [
+                ["2026-05-03 12:05:00", "Ruta A", 1000, 200],
+                ["2026-05-03 12:10:00", "Ruta B", 1200, 200],
+                ["2026-05-03 12:15:00", "Ruta B", 1200, 200],
+            ]
+        )
+        after_path = self._make_routes_file(
+            [
+                ["2026-05-04 12:05:00", "Ruta A", 1000, 180],
+                ["2026-05-04 12:10:00", "Ruta B", 1200, 180],
+                ["2026-05-04 12:15:00", "Ruta B", 1200, 180],
+            ]
+        )
+        try:
+            result = compare_route_files(
+                before_path,
+                after_path,
+                time(hour=12),
+                time(hour=14),
+                min_samples=2,
+            )
+        finally:
+            before_path.unlink(missing_ok=True)
+            after_path.unlink(missing_ok=True)
+
+        self.assertEqual(result["summary"]["routes_analyzed"], 1)
+        self.assertEqual(result["route_rows"][0]["route"], "Ruta B")
+        self.assertEqual(len(result["summary"]["excluded_low_sample_routes"]), 1)
 
     def test_build_executive_analysis_detects_critical_routes(self):
         summary = {

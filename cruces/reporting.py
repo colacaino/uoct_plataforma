@@ -32,6 +32,9 @@ def build_analysis_excel(analysis) -> bytes:
     summary = analysis.summary or {}
     rows = analysis.route_rows or []
     executive = summary.get("executive_analysis") or build_executive_analysis(summary, rows)
+    parameters = summary.get("parameters") or {}
+    percentile_low = parameters.get("percentile_low", summary.get("percentile_low", 15))
+    percentile_high = parameters.get("percentile_high", summary.get("percentile_high", 85))
 
     workbook = Workbook()
     summary_sheet = workbook.active
@@ -49,6 +52,10 @@ def build_analysis_excel(analysis) -> bytes:
         ("Velocidad antes (km/h)", summary.get("avg_speed_before")),
         ("Velocidad después (km/h)", summary.get("avg_speed_after")),
         ("Rutas analizadas", summary.get("routes_analyzed")),
+        ("Umbral clasificacion (%)", parameters.get("threshold_pct", summary.get("threshold_pct"))),
+        ("Percentiles", f"P{percentile_low} - P{percentile_high}"),
+        ("Largo minimo (m)", parameters.get("min_length_m", summary.get("min_length_m"))),
+        ("Minimo observaciones", parameters.get("min_samples", summary.get("min_samples"))),
         ("Resumen ejecutivo", executive.get("headline")),
         ("Conclusión", summary.get("conclusion")),
     ]
@@ -112,10 +119,14 @@ def build_analysis_excel(analysis) -> bytes:
             "Tiempo después",
             "Delta tiempo %",
             "Resultado",
-            "P15 antes",
-            "P85 antes",
-            "P15 después",
-            "P85 después",
+            "Largo antes km",
+            "Largo despues km",
+            f"P{percentile_low} antes",
+            f"P{percentile_high} antes",
+            f"P{percentile_low} despues",
+            f"P{percentile_high} despues",
+            "Confianza",
+            "Analisis ruta",
         ]
     )
     for row in rows:
@@ -131,10 +142,14 @@ def build_analysis_excel(analysis) -> bytes:
                 row.get("time_after"),
                 row.get("time_delta_pct"),
                 row.get("result_label"),
-                row.get("speed_p15_before"),
-                row.get("speed_p85_before"),
-                row.get("speed_p15_after"),
-                row.get("speed_p85_after"),
+                row.get("length_before_km"),
+                row.get("length_after_km"),
+                row.get("speed_p_low_before", row.get("speed_p15_before")),
+                row.get("speed_p_high_before", row.get("speed_p85_before")),
+                row.get("speed_p_low_after", row.get("speed_p15_after")),
+                row.get("speed_p_high_after", row.get("speed_p85_after")),
+                row.get("confidence_label"),
+                row.get("analysis_text"),
             ]
         )
     for cell in detail_sheet[1]:
@@ -143,7 +158,19 @@ def build_analysis_excel(analysis) -> bytes:
     _autosize_sheet(detail_sheet)
 
     quality_sheet = workbook.create_sheet("Calidad")
-    quality_sheet.append(["Archivo", "Filas totales", "Procesadas", "Fuera horario", "Inválidas", "Rutas"])
+    quality_sheet.append(
+        [
+            "Archivo",
+            "Filas totales",
+            "Procesadas",
+            "Fuera horario",
+            "Invalidas",
+            "Hora invalida",
+            "Valores invalidos",
+            "Largo bajo minimo",
+            "Rutas",
+        ]
+    )
     for label, key in (("ANTES", "before_quality"), ("DESPUÉS", "after_quality")):
         quality = summary.get(key, {})
         quality_sheet.append(
@@ -153,6 +180,9 @@ def build_analysis_excel(analysis) -> bytes:
                 quality.get("processed_rows"),
                 quality.get("out_of_window_rows"),
                 quality.get("invalid_rows"),
+                quality.get("invalid_timestamp_rows"),
+                quality.get("invalid_value_rows"),
+                quality.get("short_length_rows"),
                 quality.get("routes"),
             ]
         )
@@ -160,6 +190,19 @@ def build_analysis_excel(analysis) -> bytes:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="334155")
     _autosize_sheet(quality_sheet)
+
+    methodology_sheet = workbook.create_sheet("Metodologia")
+    methodology_sheet.append(["Tema", "Detalle"])
+    methodology_sheet.append(["Formula velocidad", parameters.get("speed_formula", "velocidad_kmh = largo_m / tiempo_s * 3.6")])
+    methodology_sheet.append(["Formula delta", parameters.get("delta_formula", "delta_pct = (despues - antes) / antes * 100")])
+    for item in summary.get("methodology", []):
+        methodology_sheet.append([item.get("title"), item.get("body")])
+    for cell in methodology_sheet[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="334155")
+    for row in range(1, methodology_sheet.max_row + 1):
+        methodology_sheet[f"B{row}"].alignment = Alignment(wrap_text=True, vertical="top")
+    _autosize_sheet(methodology_sheet)
 
     output = BytesIO()
     workbook.save(output)
@@ -170,6 +213,9 @@ def build_analysis_pdf(analysis) -> bytes:
     summary = analysis.summary or {}
     rows = analysis.route_rows or []
     executive = summary.get("executive_analysis") or build_executive_analysis(summary, rows)
+    parameters = summary.get("parameters") or {}
+    percentile_low = parameters.get("percentile_low", summary.get("percentile_low", 15))
+    percentile_high = parameters.get("percentile_high", summary.get("percentile_high", 85))
     output = BytesIO()
     doc = SimpleDocTemplate(
         output,
@@ -211,6 +257,47 @@ def build_analysis_pdf(analysis) -> bytes:
     )
     story.extend([summary_table, Spacer(1, 0.45 * cm)])
 
+    parameter_table = Table(
+        [
+            ["Parametro", "Valor", "Para que sirve"],
+            [
+                "Umbral",
+                f"{parameters.get('threshold_pct', summary.get('threshold_pct', 5))}%",
+                "Clasifica mejora, deterioro o sin cambio segun la variacion de velocidad.",
+            ],
+            [
+                "Percentiles",
+                f"P{percentile_low} - P{percentile_high}",
+                "Muestra dispersion por ruta sin depender solo del promedio.",
+            ],
+            [
+                "Largo minimo",
+                f"{parameters.get('min_length_m', summary.get('min_length_m', 0))} m",
+                "Descarta registros demasiado cortos o ruidosos.",
+            ],
+            [
+                "Minimo observaciones",
+                parameters.get("min_samples", summary.get("min_samples", 1)),
+                "Excluye rutas con baja muestra antes/despues.",
+            ],
+        ],
+        colWidths=[4.2 * cm, 4 * cm, 14 * cm],
+    )
+    parameter_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1D4ED8")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("PADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.extend([Paragraph("Parametros aplicados", styles["Heading2"]), parameter_table, Spacer(1, 0.35 * cm)])
+
     story.extend(
         [
             Paragraph("Resumen ejecutivo", styles["Heading2"]),
@@ -232,6 +319,50 @@ def build_analysis_pdf(analysis) -> bytes:
     for item in executive.get("recommendations", []):
         story.append(Paragraph(f"- {item}", styles["BodyText"]))
     story.append(Spacer(1, 0.35 * cm))
+
+    story.append(Paragraph("Metodologia de calculo", styles["Heading2"]))
+    story.append(
+        Paragraph(
+            f"Formula de velocidad: {parameters.get('speed_formula', 'velocidad_kmh = largo_m / tiempo_s * 3.6')}. "
+            f"Formula de variacion: {parameters.get('delta_formula', 'delta_pct = (despues - antes) / antes * 100')}.",
+            styles["BodyText"],
+        )
+    )
+    for item in summary.get("methodology", []):
+        story.append(Paragraph(f"<b>{item.get('title')}</b>: {item.get('body')}", styles["BodyText"]))
+    story.append(Spacer(1, 0.25 * cm))
+
+    quality_rows = [["Archivo", "Total", "Procesadas", "Fuera horario", "Invalidas", "Hora invalida", "Valores", "Largo bajo", "Rutas"]]
+    for label, key in (("Antes", "before_quality"), ("Despues", "after_quality")):
+        quality = summary.get(key, {})
+        quality_rows.append(
+            [
+                label,
+                quality.get("total_rows", 0),
+                quality.get("processed_rows", 0),
+                quality.get("out_of_window_rows", 0),
+                quality.get("invalid_rows", 0),
+                quality.get("invalid_timestamp_rows", 0),
+                quality.get("invalid_value_rows", 0),
+                quality.get("short_length_rows", 0),
+                quality.get("routes", 0),
+            ]
+        )
+    quality_table = Table(quality_rows, repeatRows=1)
+    quality_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 7),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("PADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    story.extend([Paragraph("Calidad de datos", styles["Heading3"]), quality_table, Spacer(1, 0.35 * cm)])
 
     if executive.get("critical_routes"):
         critical_table_data = [["Ruta critica", "Delta vel.", "Delta tiempo", "Muestras", "Confianza"]]
@@ -261,12 +392,27 @@ def build_analysis_pdf(analysis) -> bytes:
         )
         story.extend([Paragraph("Rutas priorizadas", styles["Heading3"]), critical_table, Spacer(1, 0.35 * cm)])
 
-    route_table_data = [["Ruta", "Obs.", "Vel. antes", "Vel. después", "Delta vel.", "Tiempo antes", "Tiempo después", "Resultado"]]
+    route_table_data = [
+        [
+            "Ruta",
+            "Obs.",
+            "Conf.",
+            "Largo km",
+            "Vel. antes",
+            "Vel. despues",
+            "Delta vel.",
+            "Tiempo antes",
+            "Tiempo despues",
+            "Resultado",
+        ]
+    ]
     for row in rows[:35]:
         route_table_data.append(
             [
                 str(row.get("route", ""))[:52],
                 f"{row.get('samples_before', 0)}/{row.get('samples_after', 0)}",
+                row.get("confidence_label", ""),
+                f"{row.get('length_before_km', 0)}/{row.get('length_after_km', 0)}",
                 row.get("speed_before", 0),
                 row.get("speed_after", 0),
                 f"{row.get('speed_delta_pct', 0)}%",
@@ -289,6 +435,26 @@ def build_analysis_pdf(analysis) -> bytes:
             ]
         )
     )
-    story.extend([Paragraph("Detalle de rutas", styles["Heading2"]), route_table])
+    story.extend([Paragraph("Detalle de rutas", styles["Heading2"]), route_table, Spacer(1, 0.3 * cm)])
+
+    if rows:
+        interpretation_data = [["Ruta", "Interpretacion especifica"]]
+        for row in rows[:12]:
+            interpretation_data.append([str(row.get("route", ""))[:45], str(row.get("analysis_text", ""))[:260]])
+        interpretation_table = Table(interpretation_data, repeatRows=1, colWidths=[7 * cm, 18 * cm])
+        interpretation_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E3A8A")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("PADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
+        story.extend([Paragraph("Analisis especifico por ruta", styles["Heading3"]), interpretation_table])
     doc.build(story)
     return output.getvalue()

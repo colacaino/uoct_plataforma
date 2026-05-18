@@ -14,7 +14,7 @@ from django.views.generic import CreateView, DeleteView, DetailView, ListView, T
 import plotly.graph_objects as go
 from plotly.offline import plot
 
-from .analysis_engine import build_executive_analysis, compare_route_files
+from .analysis_engine import build_executive_analysis, compare_route_files, parse_route_hints
 from .forms import AnalysisCreateForm, BitacoraUploadForm, CruceFileUploadForm, CruceForm, CruceShareUserForm
 from .importers import normalize_text, parse_bitacora
 from .models import Analysis, Cruce, Project, SharedReport, UploadedFile
@@ -619,12 +619,27 @@ class CruceDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         files = list(self.object.files.select_related("uploaded_by").order_by("file_type", "-created_at"))
+        analyses = list(
+            self.object.analyses.select_related("created_by", "file_before", "file_after").order_by("-created_at")
+        )
         file_type_labels = dict(UploadedFile.FileType.choices)
         summary = []
         for value, label in UploadedFile.FileType.choices:
             count = sum(1 for item in files if item.file_type == value)
             if count:
                 summary.append({"value": value, "label": label, "count": count})
+        latest_analysis = analyses[0] if analyses else None
+        latest_summary = latest_analysis.summary if latest_analysis and isinstance(latest_analysis.summary, dict) else {}
+        context["cruce_summary"] = {
+            "analysis_count": len(analyses),
+            "file_count": len(files),
+            "shared_count": self.object.shared_with.count(),
+            "route_hint_count": len(parse_route_hints(self.object.rutas_texto or "")),
+            "latest_analysis": latest_analysis,
+            "latest_speed_delta": latest_summary.get("speed_delta_pct"),
+            "latest_time_delta": latest_summary.get("time_delta_pct"),
+            "latest_routes_analyzed": latest_summary.get("routes_analyzed"),
+        }
         context["can_manage_cruce"] = can_manage_cruce(self.request.user, self.object)
         context["file_upload_form"] = CruceFileUploadForm()
         context["share_user_form"] = CruceShareUserForm(cruce=self.object)
@@ -632,7 +647,7 @@ class CruceDetailView(LoginRequiredMixin, DetailView):
         context["library_files"] = files
         context["file_type_summary"] = summary
         context["file_type_labels"] = file_type_labels
-        context["analyses"] = self.object.analyses.select_related("created_by", "file_before", "file_after").order_by("-created_at")
+        context["analyses"] = analyses
         return context
 
 
@@ -905,8 +920,12 @@ def analysis_create_view(request):
                     after_upload.file.path,
                     form.cleaned_data["horario_inicio"],
                     form.cleaned_data["horario_fin"],
-                    float(form.cleaned_data["threshold_pct"]),
-                    form.cleaned_data.get("route_hints", ""),
+                    threshold_pct=float(form.cleaned_data["threshold_pct"]),
+                    route_hints_text=form.cleaned_data.get("route_hints", ""),
+                    percentile_low=float(form.cleaned_data["percentile_low"]),
+                    percentile_high=float(form.cleaned_data["percentile_high"]),
+                    min_length_m=float(form.cleaned_data["min_length_m"]),
+                    min_samples=int(form.cleaned_data["min_samples"]),
                 )
             except Exception as exc:
                 messages.error(request, f"No se pudo procesar el análisis: {exc}")

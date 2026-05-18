@@ -1,0 +1,69 @@
+{% if analysis.summary.parameters or analysis.summary.methodology %}
+  <section class="content-section explainability-section">
+    <div class="section-title">
+      <h2>Como se calculo</h2>
+      <span>Parametros, formulas y calidad de datos</span>
+    </div>
+
+    {% with params=analysis.summary.parameters %}
+      <div class="parameter-grid">
+        <article>
+          <strong>{{ params.threshold_pct|default:analysis.summary.threshold_pct }}%</strong>
+          <span>Umbral mejora/empeora</span>
+        </article>
+        <article>
+          <strong>P{{ params.percentile_low|default:analysis.summary.percentile_low }} - P{{ params.percentile_high|default:analysis.summary.percentile_high }}</strong>
+          <span>Rango de percentiles</span>
+        </article>
+        <article>
+          <strong>{{ params.min_length_m|default:analysis.summary.min_length_m }} m</strong>
+          <span>Largo minimo de registro</span>
+        </article>
+        <article>
+          <strong>{{ params.min_samples|default:analysis.summary.min_samples }}</strong>
+          <span>Minimo de observaciones por ruta</span>
+        </article>
+      </div>
+    {% endwith %}
+
+    <div class="method-grid">
+      {% for item in analysis.summary.methodology %}
+        <article class="method-card">
+          <h3>{{ item.title }}</h3>
+          <p>{{ item.body }}</p>
+        </article>
+      {% endfor %}
+    </div>
+
+    <div class="quality-breakdown">
+      <article class="panel">
+        <h3>Archivo ANTES</h3>
+        <dl class="data-list compact-data-list">
+          <dt>Filas totales</dt><dd>{{ analysis.summary.before_quality.total_rows|default:"0" }}</dd>
+          <dt>Procesadas</dt><dd>{{ analysis.summary.before_quality.processed_rows|default:"0" }}</dd>
+          <dt>Fuera horario</dt><dd>{{ analysis.summary.before_quality.out_of_window_rows|default:"0" }}</dd>
+          <dt>Hora invalida</dt><dd>{{ analysis.summary.before_quality.invalid_timestamp_rows|default:"0" }}</dd>
+          <dt>Valores invalidos</dt><dd>{{ analysis.summary.before_quality.invalid_value_rows|default:"0" }}</dd>
+          <dt>Largo bajo minimo</dt><dd>{{ analysis.summary.before_quality.short_length_rows|default:"0" }}</dd>
+        </dl>
+      </article>
+      <article class="panel">
+        <h3>Archivo DESPUES</h3>
+        <dl class="data-list compact-data-list">
+          <dt>Filas totales</dt><dd>{{ analysis.summary.after_quality.total_rows|default:"0" }}</dd>
+          <dt>Procesadas</dt><dd>{{ analysis.summary.after_quality.processed_rows|default:"0" }}</dd>
+          <dt>Fuera horario</dt><dd>{{ analysis.summary.after_quality.out_of_window_rows|default:"0" }}</dd>
+          <dt>Hora invalida</dt><dd>{{ analysis.summary.after_quality.invalid_timestamp_rows|default:"0" }}</dd>
+          <dt>Valores invalidos</dt><dd>{{ analysis.summary.after_quality.invalid_value_rows|default:"0" }}</dd>
+          <dt>Largo bajo minimo</dt><dd>{{ analysis.summary.after_quality.short_length_rows|default:"0" }}</dd>
+        </dl>
+      </article>
+    </div>
+
+    {% if analysis.summary.excluded_low_sample_routes %}
+      <div class="import-note">
+        Se excluyeron {{ analysis.summary.excluded_low_sample_routes|length }} ruta(s) por no cumplir el minimo de observaciones configurado.
+      </div>
+    {% endif %}
+  </section>
+{% endif %}

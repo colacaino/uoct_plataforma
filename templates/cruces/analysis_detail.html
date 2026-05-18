@@ -49,6 +49,8 @@
 
 {% include "cruces/partials/executive_analysis.html" %}
 
+{% include "cruces/partials/analysis_explainability.html" %}
+
 {% if analysis.summary.warnings %}
   <section class="panel warn-panel">
     <h2>Advertencias de calidad</h2>
@@ -170,6 +172,7 @@
           <tr>
             <th>Ruta</th>
             <th>Obs.</th>
+            <th>Largo prom.</th>
             <th>Vel. antes</th>
             <th>Vel. después</th>
             <th>Δ vel.</th>
@@ -182,15 +185,25 @@
         <tbody>
           {% for row in analysis.route_rows %}
             <tr>
-              <td>{{ row.route }}</td>
-              <td>{{ row.samples_before }}/{{ row.samples_after }}</td>
+              <td>
+                <strong>{{ row.route }}</strong>
+                {% if row.analysis_text %}<small class="route-analysis-note">{{ row.analysis_text }}</small>{% endif %}
+              </td>
+              <td>
+                {{ row.samples_before }}/{{ row.samples_after }}
+                <small>Conf. {{ row.confidence_label|default:"-" }}</small>
+              </td>
+              <td>
+                {{ row.length_before_km|default:"0" }} / {{ row.length_after_km|default:"0" }} km
+                <small>Antes / despues</small>
+              </td>
               <td>
                 {{ row.speed_before }}
-                <small>P15-P85: {{ row.speed_p15_before }} - {{ row.speed_p85_before }}</small>
+                <small>P{{ analysis.summary.percentile_low|default:"15" }}-P{{ analysis.summary.percentile_high|default:"85" }}: {{ row.speed_p_low_before|default:row.speed_p15_before }} - {{ row.speed_p_high_before|default:row.speed_p85_before }}</small>
               </td>
               <td>
                 {{ row.speed_after }}
-                <small>P15-P85: {{ row.speed_p15_after }} - {{ row.speed_p85_after }}</small>
+                <small>P{{ analysis.summary.percentile_low|default:"15" }}-P{{ analysis.summary.percentile_high|default:"85" }}: {{ row.speed_p_low_after|default:row.speed_p15_after }} - {{ row.speed_p_high_after|default:row.speed_p85_after }}</small>
               </td>
               <td class="{% if row.speed_delta_pct > 0 %}pct-pos{% elif row.speed_delta_pct < 0 %}pct-neg{% endif %}">
                 {{ row.speed_delta_pct }}%
