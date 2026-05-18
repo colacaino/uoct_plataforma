@@ -6,11 +6,11 @@
 <header class="page-header">
   <div>
     <h1>Dashboard</h1>
-    <p>Resumen operativo de cruces, análisis y reportes generados en la plataforma.</p>
+    <p>Resumen operativo de cruces, analisis, archivos y reportes generados en la plataforma.</p>
   </div>
   <div class="button-row">
-    <a class="button secondary" href="{% url 'cruces:analysis_create' %}">Nuevo análisis</a>
-    <a class="button secondary" href="{% url 'cruces:import_bitacora' %}">Importar bitácora</a>
+    <a class="button secondary" href="{% url 'cruces:analysis_create' %}">Nuevo analisis</a>
+    <a class="button secondary" href="{% url 'cruces:import_bitacora' %}">Importar bitacora</a>
     <a class="button primary" href="{% url 'cruces:create' %}">Nuevo cruce</a>
   </div>
 </header>
@@ -18,46 +18,70 @@
 <section class="workflow-grid">
   <a class="workflow-card" href="{% url 'cruces:import_bitacora' %}">
     <span>1</span>
-    <strong>Importar bitácora</strong>
+    <strong>Importar bitacora</strong>
     <small>Carga cruces reales, estados, proyectos y rutas asociadas.</small>
   </a>
   <a class="workflow-card" href="{% url 'cruces:analysis_create' %}">
     <span>2</span>
     <strong>Analizar rutas</strong>
-    <small>Compara archivos antes/después y guarda el resultado en un cruce.</small>
+    <small>Compara archivos antes/despues y guarda el resultado en un cruce.</small>
   </a>
   <a class="workflow-card" href="{% url 'cruces:analysis_list' %}">
     <span>3</span>
     <strong>Reportar</strong>
-    <small>Revisa gráficos, exporta PDF/Excel y comparte enlaces.</small>
+    <small>Revisa graficos, exporta PDF/Excel y comparte enlaces.</small>
   </a>
 </section>
 
-<section class="kpi-grid">
+<section class="kpi-grid dashboard-kpis">
   <div class="kpi">
     <small>Cruces registrados</small>
     <span>{{ total_cruces }}</span>
+    <em>{{ cruces_mes }} este mes</em>
   </div>
   <div class="kpi">
-    <small>Análisis guardados</small>
+    <small>Analisis guardados</small>
     <span>{{ total_analisis }}</span>
+    <em>{{ analisis_mes }} este mes</em>
   </div>
   <div class="kpi">
-    <small>Con modificación</small>
+    <small>Archivos cargados</small>
+    <span>{{ total_archivos }}</span>
+    <em>{{ total_reportes }} reporte(s) compartidos</em>
+  </div>
+  <div class="kpi">
+    <small>Proyectos/obras</small>
+    <span>{{ total_proyectos }}</span>
+    <em>Con cruces asociados</em>
+  </div>
+  <div class="kpi">
+    <small>Con modificacion</small>
     <span>{{ con_modificacion }}</span>
+    <em>{{ modificacion_pct }}% del total</em>
   </div>
   <div class="kpi {% if avg_speed_delta != None and avg_speed_delta < 0 %}kpi-danger{% elif avg_speed_delta != None and avg_speed_delta > 0 %}kpi-success{% endif %}">
     <small>Delta velocidad promedio</small>
     <span>{{ avg_speed_delta|default:"-" }}{% if avg_speed_delta != None %}%{% endif %}</span>
+    <em>Promedio de analisis</em>
+  </div>
+  <div class="kpi {% if avg_time_delta != None and avg_time_delta > 0 %}kpi-danger{% elif avg_time_delta != None and avg_time_delta < 0 %}kpi-success{% endif %}">
+    <small>Delta tiempo promedio</small>
+    <span>{{ avg_time_delta|default:"-" }}{% if avg_time_delta != None %}%{% endif %}</span>
+    <em>Menor tiempo es mejor</em>
+  </div>
+  <div class="kpi {% if critical_routes > 0 %}kpi-danger{% endif %}">
+    <small>Rutas criticas</small>
+    <span>{{ critical_routes }}</span>
+    <em>{{ total_routes_analyzed }} rutas analizadas</em>
   </div>
 </section>
 
-{% if results_chart or speed_chart %}
-  <section class="chart-grid">
+{% if results_chart or speed_chart or estado_chart or jornada_chart or risk_chart or files_chart %}
+  <section class="chart-grid dashboard-chart-grid">
     {% if results_chart %}
       <article class="content-section">
         <div class="section-title">
-          <h2>Resultados de análisis</h2>
+          <h2>Resultados de analisis</h2>
           <span>{{ total_analisis }} total</span>
         </div>
         <div class="chart-wrap">{{ results_chart|safe }}</div>
@@ -67,17 +91,84 @@
       <article class="content-section">
         <div class="section-title">
           <h2>Delta velocidad reciente</h2>
-          <span>Últimos 12</span>
+          <span>Ultimos 12</span>
         </div>
         <div class="chart-wrap">{{ speed_chart|safe }}</div>
+      </article>
+    {% endif %}
+    {% if risk_chart %}
+      <article class="content-section">
+        <div class="section-title">
+          <h2>Riesgo operacional</h2>
+          <span>Resumen ejecutivo</span>
+        </div>
+        <div class="chart-wrap">{{ risk_chart|safe }}</div>
+      </article>
+    {% endif %}
+    {% if estado_chart %}
+      <article class="content-section">
+        <div class="section-title">
+          <h2>Cruces por estado</h2>
+          <span>Top estados</span>
+        </div>
+        <div class="chart-wrap">{{ estado_chart|safe }}</div>
+      </article>
+    {% endif %}
+    {% if jornada_chart %}
+      <article class="content-section">
+        <div class="section-title">
+          <h2>Distribucion por jornada</h2>
+          <span>{{ total_cruces }} cruces</span>
+        </div>
+        <div class="chart-wrap">{{ jornada_chart|safe }}</div>
+      </article>
+    {% endif %}
+    {% if files_chart %}
+      <article class="content-section">
+        <div class="section-title">
+          <h2>Biblioteca de archivos</h2>
+          <span>{{ total_archivos }} archivo(s)</span>
+        </div>
+        <div class="chart-wrap">{{ files_chart|safe }}</div>
       </article>
     {% endif %}
   </section>
 {% endif %}
 
+{% if top_degradations %}
+  <section class="content-section">
+    <div class="section-title">
+      <h2>Rutas con mayor deterioro</h2>
+      <span>Prioridad de revision</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Ruta</th>
+            <th>Cruce</th>
+            <th>Delta velocidad</th>
+            <th>Delta tiempo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in top_degradations %}
+            <tr>
+              <td><a href="{{ row.analysis_url }}">{{ row.route }}</a></td>
+              <td>{{ row.cruce }}</td>
+              <td class="pct-neg">{{ row.speed_delta_pct }}%</td>
+              <td>{{ row.time_delta_pct }}%</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+
 <section class="content-section">
   <div class="section-title">
-    <h2>Últimos análisis</h2>
+    <h2>Ultimos analisis</h2>
     <a href="{% url 'cruces:analysis_list' %}">Ver todos</a>
   </div>
   {% if ultimos_analisis %}
@@ -85,7 +176,7 @@
       <table>
         <thead>
           <tr>
-            <th>Análisis</th>
+            <th>Analisis</th>
             <th>Cruce</th>
             <th>Resultado</th>
             <th>Delta vel.</th>
@@ -107,15 +198,15 @@
     </div>
   {% else %}
     <div class="empty-state compact">
-      <p>Todavía no hay análisis guardados.</p>
-      <a class="button primary" href="{% url 'cruces:analysis_create' %}">Crear análisis</a>
+      <p>Todavia no hay analisis guardados.</p>
+      <a class="button primary" href="{% url 'cruces:analysis_create' %}">Crear analisis</a>
     </div>
   {% endif %}
 </section>
 
 <section class="content-section">
   <div class="section-title">
-    <h2>Últimos cruces</h2>
+    <h2>Ultimos cruces</h2>
     <a href="{% url 'cruces:list' %}">Ver todos</a>
   </div>
   {% if ultimos_cruces %}
@@ -123,7 +214,7 @@
       {% for cruce in ultimos_cruces %}
         <article class="item-card">
           <div class="item-top">
-            <span class="muted">{{ cruce.codigo_j|default:"Sin código" }}</span>
+            <span class="muted">{{ cruce.codigo_j|default:"Sin codigo" }}</span>
             <span class="tag">{{ cruce.jornada|default:"-" }}</span>
           </div>
           <h3><a href="{{ cruce.get_absolute_url }}">{{ cruce.interseccion }}</a></h3>
@@ -138,9 +229,9 @@
   {% else %}
     <div class="empty-state">
       <h2>Sin cruces registrados</h2>
-      <p>Crea el primero manualmente o importa la bitácora de terrenos.</p>
+      <p>Crea el primero manualmente o importa la bitacora de terrenos.</p>
       <div class="button-row center">
-        <a class="button secondary" href="{% url 'cruces:import_bitacora' %}">Importar bitácora</a>
+        <a class="button secondary" href="{% url 'cruces:import_bitacora' %}">Importar bitacora</a>
         <a class="button primary" href="{% url 'cruces:create' %}">Crear cruce</a>
       </div>
     </div>

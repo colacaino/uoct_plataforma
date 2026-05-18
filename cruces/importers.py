@@ -48,6 +48,9 @@ class BitacoraParseResult:
     header_row: int
     headers: list[str]
     rows: list[dict[str, Any]]
+    scanned_rows: int = 0
+    skipped_empty_rows: int = 0
+    skipped_no_identity_rows: int = 0
 
 
 def normalize_text(value: Any) -> str:
@@ -205,15 +208,25 @@ def parse_bitacora(path: str | Path) -> BitacoraParseResult:
     try:
         worksheet, header_row, header_map, headers = _find_header_sheet(workbook)
         parsed_rows: list[dict[str, Any]] = []
+        scanned_rows = 0
+        skipped_empty_rows = 0
+        skipped_no_identity_rows = 0
 
         for row_number, row in enumerate(
             worksheet.iter_rows(min_row=header_row + 1, values_only=True),
             start=header_row + 1,
         ):
+            scanned_rows += 1
             raw = {field_name: row[index] if index < len(row) else None for index, field_name in header_map.items()}
+            has_any_value = any(compact_string(value) for value in raw.values())
+            if not has_any_value:
+                skipped_empty_rows += 1
+                continue
+
             interseccion = compact_string(raw.get("interseccion"))
             codigo_j = compact_string(raw.get("codigo_j")).upper()
             if not interseccion and not codigo_j:
+                skipped_no_identity_rows += 1
                 continue
 
             horario_inicio, horario_fin = parse_time_range(raw.get("horario_inicio"), raw.get("horario_fin"))
@@ -259,6 +272,9 @@ def parse_bitacora(path: str | Path) -> BitacoraParseResult:
             header_row=header_row,
             headers=headers,
             rows=parsed_rows,
+            scanned_rows=scanned_rows,
+            skipped_empty_rows=skipped_empty_rows,
+            skipped_no_identity_rows=skipped_no_identity_rows,
         )
     finally:
         workbook.close()

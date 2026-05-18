@@ -51,6 +51,31 @@
       <div class="kpi"><span>{{ preview.counters.warning }}</span><small>Con advertencia</small></div>
     </div>
 
+    {% if preview.diagnostics %}
+      <div class="import-diagnostics">
+        <div class="section-title">
+          <h2>Diagnostico de lectura</h2>
+          <span>Por que no se guarda todo</span>
+        </div>
+        <div class="diagnostic-grid">
+          {% for item in preview.diagnostics %}
+            <article class="diagnostic-card">
+              <strong>{{ item.value }}</strong>
+              <span>{{ item.label }}</span>
+              <small>{{ item.detail }}</small>
+            </article>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    {% if preview.counters.duplicate or preview.counters.error %}
+      <div class="import-note">
+        <strong>Importante:</strong>
+        el sistema solo guarda filas marcadas como <b>Listo</b>. Las duplicadas se omiten para no crear cruces repetidos, y las filas con error quedan visibles para corregir el Excel o cargarlas manualmente.
+      </div>
+    {% endif %}
+
     <div class="table-wrap">
       <table>
         <thead>

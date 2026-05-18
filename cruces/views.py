@@ -356,6 +356,11 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         cruces = visible_cruces(self.request.user)
         analyses = visible_analyses(self.request.user).select_related("cruce")
+        files = UploadedFile.objects.select_related("cruce", "uploaded_by")
+        if not is_admin_user(self.request.user):
+            files = files.filter(Q(cruce__in=cruces) | Q(cruce__isnull=True, uploaded_by=self.request.user)).distinct()
+        visible_analysis_ids = analyses.values_list("id", flat=True)
+        shared_reports = SharedReport.objects.filter(analysis_id__in=visible_analysis_ids)
         result_counts = {
             choice_value: analyses.filter(result=choice_value).count()
             for choice_value, _ in Analysis.Result.choices
@@ -371,10 +376,60 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 sum(float(analysis.summary.get("speed_delta_pct", 0)) for analysis in speed_rows) / len(speed_rows),
                 2,
             )
+        avg_time_delta = None
+        time_rows = [
+            analysis
+            for analysis in analyses
+            if isinstance(analysis.summary, dict) and analysis.summary.get("time_delta_pct") is not None
+        ]
+        if time_rows:
+            avg_time_delta = round(
+                sum(float(analysis.summary.get("time_delta_pct", 0)) for analysis in time_rows) / len(time_rows),
+                2,
+            )
+        today = timezone.localdate()
+        month_start = today.replace(day=1)
+        risk_counts = {"alto": 0, "medio": 0, "bajo": 0, "sin_datos": 0}
+        total_routes_analyzed = 0
+        critical_routes = 0
+        top_degradations = []
+        for analysis in analyses:
+            summary = analysis.summary if isinstance(analysis.summary, dict) else {}
+            route_rows = analysis.route_rows if isinstance(analysis.route_rows, list) else []
+            total_routes_analyzed += int(summary.get("routes_analyzed") or len(route_rows) or 0)
+            executive = summary.get("executive_analysis") or build_executive_analysis(summary, route_rows)
+            risk_level = executive.get("risk", {}).get("level", "sin_datos")
+            risk_counts[risk_level if risk_level in risk_counts else "sin_datos"] += 1
+            critical_routes += int(executive.get("counts", {}).get("critical") or 0)
+            for row in route_rows:
+                speed_delta = float(row.get("speed_delta_pct") or 0)
+                if speed_delta < 0:
+                    top_degradations.append(
+                        {
+                            "route": row.get("route", "Ruta sin nombre"),
+                            "cruce": analysis.cruce.interseccion,
+                            "analysis_url": analysis.get_absolute_url(),
+                            "speed_delta_pct": round(speed_delta, 2),
+                            "time_delta_pct": row.get("time_delta_pct", 0),
+                        }
+                    )
+        top_degradations = sorted(top_degradations, key=lambda row: row["speed_delta_pct"])[:8]
+        total_cruces = cruces.count()
         context["total_cruces"] = cruces.count()
         context["total_analisis"] = analyses.count()
+        context["total_archivos"] = files.count()
+        context["total_reportes"] = shared_reports.count()
+        context["total_proyectos"] = cruces.exclude(project__isnull=True).values("project_id").distinct().count()
+        context["cruces_mes"] = cruces.filter(created_at__date__gte=month_start).count()
+        context["analisis_mes"] = analyses.filter(created_at__date__gte=month_start).count()
         context["con_modificacion"] = cruces.filter(realizo_modificacion=True).count()
+        context["modificacion_pct"] = round((context["con_modificacion"] / total_cruces) * 100, 1) if total_cruces else 0
         context["avg_speed_delta"] = avg_speed_delta
+        context["avg_time_delta"] = avg_time_delta
+        context["total_routes_analyzed"] = total_routes_analyzed
+        context["critical_routes"] = critical_routes
+        context["risk_counts"] = risk_counts
+        context["top_degradations"] = top_degradations
         context["ultimos_cruces"] = cruces.select_related("project").order_by("-created_at")[:6]
         context["ultimos_analisis"] = analyses.order_by("-created_at")[:6]
         context["por_estado"] = cruces.values("estado").annotate(total=Count("id")).order_by("estado")
@@ -415,6 +470,98 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             )
             context["speed_chart"] = plot(
                 fig_speed,
+                output_type="div",
+                include_plotlyjs=False,
+                config={"displayModeBar": False, "responsive": True},
+            )
+
+        estado_rows = list(cruces.values("estado").annotate(total=Count("id")).order_by("-total")[:8])
+        if estado_rows:
+            fig_estado = go.Figure(
+                data=[
+                    go.Bar(
+                        x=[row["estado"] or "Sin estado" for row in estado_rows],
+                        y=[row["total"] for row in estado_rows],
+                        marker_color="#2563eb",
+                    )
+                ]
+            )
+            fig_estado.update_layout(
+                height=320,
+                margin={"l": 45, "r": 10, "t": 20, "b": 90},
+                yaxis_title="Cruces",
+                xaxis_tickangle=-25,
+                template="plotly_white",
+            )
+            context["estado_chart"] = plot(
+                fig_estado,
+                output_type="div",
+                include_plotlyjs=not analyses.exists(),
+                config={"displayModeBar": False, "responsive": True},
+            )
+
+        jornada_rows = list(cruces.values("jornada").annotate(total=Count("id")).order_by("-total"))
+        if jornada_rows:
+            fig_jornada = go.Figure(
+                data=[
+                    go.Pie(
+                        labels=[row["jornada"] or "Sin jornada" for row in jornada_rows],
+                        values=[row["total"] for row in jornada_rows],
+                        hole=0.52,
+                        marker_colors=["#2563eb", "#0f766e", "#f59e0b", "#64748b", "#94a3b8"],
+                    )
+                ]
+            )
+            fig_jornada.update_layout(height=320, margin={"l": 10, "r": 10, "t": 20, "b": 20}, template="plotly_white")
+            context["jornada_chart"] = plot(
+                fig_jornada,
+                output_type="div",
+                include_plotlyjs=False,
+                config={"displayModeBar": False, "responsive": True},
+            )
+
+        if analyses.exists():
+            risk_labels = ["Alto", "Medio", "Bajo", "Sin datos"]
+            risk_values = [risk_counts["alto"], risk_counts["medio"], risk_counts["bajo"], risk_counts["sin_datos"]]
+            fig_risk = go.Figure(
+                data=[go.Bar(x=risk_labels, y=risk_values, marker_color=["#dc2626", "#f59e0b", "#16a34a", "#94a3b8"])]
+            )
+            fig_risk.update_layout(
+                height=320,
+                margin={"l": 45, "r": 10, "t": 20, "b": 60},
+                yaxis_title="Analisis",
+                template="plotly_white",
+            )
+            context["risk_chart"] = plot(
+                fig_risk,
+                output_type="div",
+                include_plotlyjs=False,
+                config={"displayModeBar": False, "responsive": True},
+            )
+
+        file_counts = {
+            value: files.filter(file_type=value).count()
+            for value, _ in UploadedFile.FileType.choices
+        }
+        if any(file_counts.values()):
+            fig_files = go.Figure(
+                data=[
+                    go.Bar(
+                        x=[label for value, label in UploadedFile.FileType.choices],
+                        y=[file_counts[value] for value, _ in UploadedFile.FileType.choices],
+                        marker_color="#0f766e",
+                    )
+                ]
+            )
+            fig_files.update_layout(
+                height=320,
+                margin={"l": 45, "r": 10, "t": 20, "b": 85},
+                yaxis_title="Archivos",
+                xaxis_tickangle=-25,
+                template="plotly_white",
+            )
+            context["files_chart"] = plot(
+                fig_files,
                 output_type="div",
                 include_plotlyjs=False,
                 config={"displayModeBar": False, "responsive": True},
@@ -876,7 +1023,18 @@ def _annotate_bitacora_rows(rows):
     }
     seen_codes = set()
     seen_natural = set()
-    counters = {"total": 0, "ready": 0, "duplicate": 0, "error": 0, "warning": 0}
+    counters = {
+        "total": 0,
+        "ready": 0,
+        "duplicate": 0,
+        "error": 0,
+        "warning": 0,
+        "duplicate_existing_code": 0,
+        "duplicate_file_code": 0,
+        "duplicate_existing_natural": 0,
+        "duplicate_file_natural": 0,
+        "missing_intersection": 0,
+    }
     annotated = []
 
     for source_row in rows:
@@ -890,26 +1048,31 @@ def _annotate_bitacora_rows(rows):
             row["status_label"] = "Error"
             row["status_detail"] = "Sin intersección."
             counters["error"] += 1
+            counters["missing_intersection"] += 1
         elif code and code in existing_codes:
             row["status"] = "duplicate"
             row["status_label"] = "Duplicado"
             row["status_detail"] = "Ya existe un cruce con ese código J."
             counters["duplicate"] += 1
+            counters["duplicate_existing_code"] += 1
         elif code and code in seen_codes:
             row["status"] = "duplicate"
             row["status_label"] = "Duplicado"
             row["status_detail"] = "Código J repetido dentro del archivo."
             counters["duplicate"] += 1
+            counters["duplicate_file_code"] += 1
         elif not code and key in existing_natural:
             row["status"] = "duplicate"
             row["status_label"] = "Duplicado"
             row["status_detail"] = "Ya existe un cruce con la misma intersección, fecha y jornada."
             counters["duplicate"] += 1
+            counters["duplicate_existing_natural"] += 1
         elif not code and key in seen_natural:
             row["status"] = "duplicate"
             row["status_label"] = "Duplicado"
             row["status_detail"] = "Intersección, fecha y jornada repetidas dentro del archivo."
             counters["duplicate"] += 1
+            counters["duplicate_file_natural"] += 1
         else:
             row["status"] = "ready"
             row["status_label"] = "Listo"
@@ -925,6 +1088,41 @@ def _annotate_bitacora_rows(rows):
         annotated.append(row)
 
     return annotated, counters
+
+
+def _build_import_diagnostics(parse_result, counters):
+    return [
+        {
+            "label": "Filas escaneadas",
+            "value": parse_result.scanned_rows,
+            "detail": "Filas revisadas bajo la fila de encabezados.",
+        },
+        {
+            "label": "Filas interpretadas",
+            "value": len(parse_result.rows),
+            "detail": "Filas con codigo o interseccion detectada.",
+        },
+        {
+            "label": "Vacias omitidas",
+            "value": parse_result.skipped_empty_rows,
+            "detail": "Filas sin valores en columnas reconocidas.",
+        },
+        {
+            "label": "Sin cruce/codigo",
+            "value": parse_result.skipped_no_identity_rows,
+            "detail": "Filas con datos, pero sin identificador utilizable.",
+        },
+        {
+            "label": "Duplicadas en sistema",
+            "value": counters["duplicate_existing_code"] + counters["duplicate_existing_natural"],
+            "detail": "Ya existian por codigo J o por interseccion+fecha+jornada.",
+        },
+        {
+            "label": "Duplicadas en archivo",
+            "value": counters["duplicate_file_code"] + counters["duplicate_file_natural"],
+            "detail": "Repetidas dentro del mismo Excel.",
+        },
+    ]
 
 
 def _create_cruce_from_import_row(row, user):
@@ -1007,6 +1205,7 @@ def bitacora_import_view(request):
                 "headers": result.headers,
                 "rows": rows,
                 "counters": counters,
+                "diagnostics": _build_import_diagnostics(result, counters),
             }
             request.session[BITACORA_SESSION_KEY] = preview
             messages.success(request, "Archivo leído correctamente. Revisa la vista previa antes de guardar.")
